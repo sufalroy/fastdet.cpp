@@ -1,69 +1,28 @@
 ---
-Checks: >
-  *,
-  -abseil-*,
-  -altera-*,
-  -android-*,
-  -fuchsia-*,
-  -google-*,
-  -llvm*,
-  -objc-*,
-  -zircon-*,
-  -cppcoreguidelines-avoid-magic-numbers,
-  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
-  -cppcoreguidelines-pro-type-vararg,
-  -hicpp-vararg,
-  -readability-magic-numbers,
-  -readability-identifier-length,
-  -readability-function-cognitive-complexity,
-  -modernize-use-trailing-return-type
-
+Checks: "*,
+        -abseil-*,
+        -altera-*,
+        -android-*,
+        -fuchsia-*,
+        -google-*,
+        -llvm*,
+        -modernize-use-trailing-return-type,
+        -zircon-*,
+        -readability-else-after-return,
+        -readability-static-accessed-through-instance,
+        -readability-avoid-const-params-in-decls,
+        -cppcoreguidelines-non-private-member-variables-in-classes,
+        -misc-non-private-member-variables-in-classes,
+        -misc-no-recursion,
+        -misc-use-anonymous-namespace,
+        -misc-use-internal-linkage
+"
 WarningsAsErrors: ''
-FormatStyle: file
+HeaderFilterRegex: ''
+FormatStyle:     none
+
 CheckOptions:
-  - key: bugprone-argument-comment.StrictMode
-    value: '1'
-  - key: bugprone-argument-comment.CommentBoolLiterals
-    value: '1'
-  - key: bugprone-misplaced-widening-cast.CheckImplicitCasts
-    value: '1'
-  - key: bugprone-sizeof-expression.WarnOnSizeOfConstant
-    value: '1'
-  - key: bugprone-suspicious-string-compare.WarnOnLogicalNotComparison
-    value: '1'
-  - key: cppcoreguidelines-explicit-virtual-functions.AllowOverrideAndFinal
-    value: '1'
-  - key: cppcoreguidelines-init-variables.IncludeStyle
-    value: llvm
-  - key: cppcoreguidelines-narrowing-conversions.PedanticMode
-    value: '1'
-  - key: cppcoreguidelines-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
-    value: '1'
-  - key: readability-implicit-bool-conversion.AllowPointerConditions
-    value: '1'
-  - key: readability-redundant-declaration.IgnoreMacros
-    value: '1'
-  - key: readability-identifier-naming.ClassCase
-    value: 'CamelCase'
-  - key: readability-identifier-naming.StructCase
-    value: 'CamelCase'
-  - key: readability-identifier-naming.TemplateParameterCase
-    value: 'CamelCase'
-  - key: readability-identifier-naming.FunctionCase
-    value: 'camelBack'
-  - key: readability-identifier-naming.VariableCase
-    value: 'camelBack'
-  - key: readability-identifier-naming.ClassMemberCase
-    value: 'camelBack'
-  - key: readability-identifier-naming.ClassMemberSuffix
-    value: '_'
-  - key: readability-identifier-naming.ConstantCase
-    value: 'UPPER_CASE'
-  - key: readability-identifier-naming.EnumCase
-    value: 'CamelCase'
-  - key: readability-identifier-naming.EnumConstantCase
-    value: 'UPPER_CASE'
-  - key: readability-identifier-naming.GlobalConstantCase
-    value: 'UPPER_CASE'
-  - key: readability-identifier-naming.NamespaceCase
-    value: 'camelBack'
+  - key: readability-identifier-length.IgnoredVariableNames
+    value: 'x|y|z'
+  - key: readability-identifier-length.IgnoredParameterNames
+    value: 'x|y|z'
