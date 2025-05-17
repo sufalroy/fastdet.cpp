@@ -4,9 +4,9 @@
 #include <NvInfer.h>
 #include <cuda_runtime_api.h>
 
-#include "common/Logger.h"
-#include "common/Assert.h"
-#include "core/Engine.h"
+#include "common/logging.h"
+#include "common/assertion.h"
+#include "core/engine.h"
 
 
 void printDeviceInfo() {

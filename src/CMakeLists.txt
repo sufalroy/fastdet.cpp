@@ -1,6 +1,6 @@
 add_executable(runtime main.cpp
-        common/Logger.cpp
-        core/Engine.cpp)
+        common/logging.cpp
+        core/engine.cpp)
 
 target_include_directories(runtime
         PUBLIC

@@ -1,4 +1,4 @@
-#include "core/Engine.h"
+#include "core/engine.h"
 
 #include <fstream>
 #include <format>
@@ -42,7 +42,7 @@ namespace fastdet::core {
             ? std::to_string(mOptions.optInputWidth)
             : std::format("{}-{}-{}", mOptions.minInputWidth, mOptions.optInputWidth, mOptions.maxInputWidth);
 
-        std::string filename = std::format("{}_{}_b{}_w{}.engine", baseName, precStr, batchStr, widthStr);
+        std::string filename = std::format("{}_{}_b{}_w{}.Engine", baseName, precStr, batchStr, widthStr);
         return (std::filesystem::path(mOptions.engineFileDir) / filename).string();
     }
 
@@ -168,38 +168,39 @@ namespace fastdet::core {
         FASTDET_ASSERT_MSG(cudaStreamCreate(&profileStream) == cudaSuccess, "Failed to create CUDA stream for profiling");
         config->setProfileStream(profileStream);
 
-        FASTDET_LOG_INFO("Building TensorRT engine. This may take a while...");
+        FASTDET_LOG_INFO("Building TensorRT Engine. This may take a while...");
         auto plan = std::unique_ptr<nvinfer1::IHostMemory>(builder->buildSerializedNetwork(*network, *config));
         FASTDET_ASSERT_MSG(plan != nullptr, "Failed to build serialized network");
-        FASTDET_LOG_INFO("TensorRT engine built successfully");
+        FASTDET_LOG_INFO("TensorRT Engine built successfully");
 
-        std::string enginePath = generateEnginePath(onnxPath);
+        std::string EnginePath = generateEnginePath(onnxPath);
         std::filesystem::path dirPath = std::filesystem::path(mOptions.engineFileDir);
 
         try {
             if (!std::filesystem::exists(dirPath)) {
                 std::filesystem::create_directories(dirPath);
-                FASTDET_LOG_INFO("Created engine directory: {}", mOptions.engineFileDir);
+                FASTDET_LOG_INFO("Created Engine directory: {}", mOptions.engineFileDir);
             }
         } catch (const std::filesystem::filesystem_error& e) {
-            FASTDET_LOG_ERROR("Failed to create engine directory: {}", e.what());
+            FASTDET_LOG_ERROR("Failed to create Engine directory: {}", e.what());
             cudaStreamDestroy(profileStream);
             return false;
         }
 
         try {
-            std::ofstream engineFile(enginePath, std::ios::binary);
-            FASTDET_ASSERT_MSG(engineFile.is_open(), "Failed to open engine file for writing: {}", enginePath);
+            std::ofstream EngineFile(EnginePath, std::ios::binary);
+            FASTDET_ASSERT_MSG(EngineFile.is_open(), "Failed to open Engine file for writing: {}", EnginePath);
 
-            engineFile.write(static_cast<const char*>(plan->data()), plan->size());
-            engineFile.close();
+            EngineFile.write(static_cast<const char*>(plan->data()), plan->size());
+            EngineFile.close();
 
-            FASTDET_LOG_INFO("TensorRT engine serialized to {}", enginePath);
+            FASTDET_LOG_INFO("TensorRT Engine serialized to {}", EnginePath);
         } catch (const std::exception& e) {
-            FASTDET_LOG_ERROR("Failed to write engine file: {}", e.what());
+            FASTDET_LOG_ERROR("Failed to write Engine file: {}", e.what());
             cudaStreamDestroy(profileStream);
             return false;
         }
+
         cudaStreamDestroy(profileStream);
 
         return true;

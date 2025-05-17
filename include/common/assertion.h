@@ -4,7 +4,7 @@
 #include <string_view>
 #include <utility>
 
-#include "Logger.h"
+#include "logging.h"
 
 #if defined(_MSC_VER)
 #define FASTDET_LIKELY(x) (x)
@@ -21,11 +21,14 @@ namespace fastdet::common {
         template <typename... Args>
         static void check(
             bool condition,
+            const std::source_location& loc,
             std::string_view message,
-            const std::source_location& loc = std::source_location::current(),
             Args&&... args) {
             if (FASTDET_UNLIKELY(!condition)) {
-                FASTDET_LOG_FATAL(message, std::forward<Args>(args)...);
+                gLogger.logFormatted(nvinfer1::ILogger::Severity::kINTERNAL_ERROR,
+                                    message,
+                                    loc,
+                                    std::forward<Args>(args)...);
                 throw std::runtime_error(fmt::format(fmt::runtime(message), std::forward<Args>(args)...));
             }
         }
@@ -33,30 +36,30 @@ namespace fastdet::common {
         template <typename... Args>
         static void checkDebug(
             bool condition,
+            const std::source_location& loc,
             std::string_view message,
-            const std::source_location& loc = std::source_location::current(),
             Args&&... args) {
 #ifndef NDEBUG
-            check(condition, message, loc, std::forward<Args>(args)...);
+            check(condition, loc, message, std::forward<Args>(args)...);
 #endif
         }
     };
 }
 
 #define FASTDET_ASSERT(condition) \
-    fastdet::common::Assert::check((condition), "Assertion failed: {}", std::source_location::current(), #condition)
+    fastdet::common::Assert::check((condition), std::source_location::current(), "Assertion failed: {}", #condition)
 
 #define FASTDET_ASSERT_MSG(condition, message, ...) \
-    fastdet::common::Assert::check((condition), "Assertion failed: " message, std::source_location::current(), ##__VA_ARGS__)
+    fastdet::common::Assert::check((condition), std::source_location::current(), "Assertion failed: " message, ##__VA_ARGS__)
 
 #define FASTDET_ASSERT_DEBUG(condition) \
-    fastdet::common::Assert::checkDebug((condition), "Debug assertion failed: {}", std::source_location::current(), #condition)
+    fastdet::common::Assert::checkDebug((condition), std::source_location::current(), "Debug assertion failed: {}", #condition)
 
 #define FASTDET_ASSERT_DEBUG_MSG(condition, message, ...) \
-    fastdet::common::Assert::checkDebug((condition), "Debug assertion failed: " message, std::source_location::current(), ##__VA_ARGS__)
+    fastdet::common::Assert::checkDebug((condition), std::source_location::current(), "Debug assertion failed: " message, ##__VA_ARGS__)
 
 #define FASTDET_THROW(message, ...) \
     do { \
-        FASTDET_LOG_FATAL(message, ##__VA_ARGS__); \
-        throw std::runtime_error(fmt::format(message, ##__VA_ARGS__)); \
+        gLogger.logFormatted(nvinfer1::ILogger::Severity::kINTERNAL_ERROR, message, std::source_location::current(), ##__VA_ARGS__); \
+        throw std::runtime_error(fmt::format(fmt::runtime(message), ##__VA_ARGS__)); \
     } while (0)

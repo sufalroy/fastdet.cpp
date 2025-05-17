@@ -9,8 +9,8 @@
 #include <concepts>
 #include <type_traits>
 
-#include "common/Logger.h"
-#include "common/Assert.h"
+#include "common/logging.h"
+#include "common/assertion.h"
 
 namespace fastdet::core {
 
