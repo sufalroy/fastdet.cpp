@@ -6,7 +6,7 @@
 
 #include "common/logging.h"
 #include "common/assertion.h"
-#include "core/engine.h"
+#include "core/TensorRTEngine.h"
 
 
 void printDeviceInfo() {
@@ -26,21 +26,22 @@ void printDeviceInfo() {
             FASTDET_LOG_INFO("Device {}: {}", i, properties.name);
             FASTDET_LOG_INFO("  Compute capability: {}.{}", properties.major, properties.minor);
             FASTDET_LOG_INFO("  Total global memory: {:.2f} GB",
-                           static_cast<float>(properties.totalGlobalMem) / (1024 * 1024 * 1024));
+                             static_cast<float>(properties.totalGlobalMem) / (1024 * 1024 * 1024));
             FASTDET_LOG_INFO("  Multiprocessors: {}", properties.multiProcessorCount);
         }
     }
 }
 
-auto main(int argc, char* argv[]) -> int {
+auto main(int argc, char *argv[]) -> int {
     try {
         FASTDET_LOG_INFO("Starting TensorRT sanity check");
-        FASTDET_LOG_INFO("TensorRT version: {}.{}.{}",
-                        NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH);
+        FASTDET_LOG_INFO("TensorRT version: {}.{}.{}", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH);
 
         printDeviceInfo();
 
-        std::string onnxPath = (argc > 1) ? argv[1] : "C:/Laboratory/cpp-workspace/fastdet.cpp/models/version-RFB-640.onnx";
+        std::string onnxPath = (argc > 1)
+                                   ? argv[1]
+                                   : "C:/Laboratory/cpp-workspace/fastdet.cpp/models/YOLOv11-Detection.onnx";
         FASTDET_LOG_INFO("Using ONNX model: {}", onnxPath);
 
         fastdet::core::Options options;
@@ -53,19 +54,32 @@ auto main(int argc, char* argv[]) -> int {
         options.engineFileDir = "./engines";
 
         FASTDET_LOG_INFO("Creating engine instance");
-        fastdet::core::Engine engine;
+        std::unique_ptr<fastdet::core::IEngine> engine = std::make_unique<fastdet::core::TensorRTEngine>();
 
         FASTDET_LOG_INFO("Building TensorRT engine from ONNX model");
-        bool success = engine.build(onnxPath, options);
+        bool success = engine->build(onnxPath, options);
 
         if (success) {
             FASTDET_LOG_INFO("Engine built successfully!");
-            return EXIT_SUCCESS;
+
+            const std::string enginePath =
+                    "C:/Laboratory/cpp-workspace/fastdet.cpp/cmake-build-debug/src/engines/YOLOv11-Detection_fp16_b1_w640.engine";
+
+            FASTDET_LOG_INFO("Loading built engine from: {}", enginePath);
+            bool loadSuccess = engine->load(enginePath);
+
+            if (loadSuccess) {
+                FASTDET_LOG_INFO("Engine loaded successfully!");
+                return EXIT_SUCCESS;
+            } else {
+                FASTDET_LOG_ERROR("Failed to load engine");
+                return EXIT_FAILURE;
+            }
         } else {
             FASTDET_LOG_ERROR("Failed to build engine");
             return EXIT_FAILURE;
         }
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         FASTDET_LOG_FATAL("Sanity check failed: {}", e.what());
         return EXIT_FAILURE;
     }

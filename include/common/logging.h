@@ -10,30 +10,28 @@
 #include <mutex>
 
 namespace fastdet::common {
-
     class Logger : public nvinfer1::ILogger {
     public:
         explicit Logger(nvinfer1::ILogger::Severity severity = nvinfer1::ILogger::Severity::kINFO)
-        : mLogger{spdlog::stdout_color_mt("FASTDET")} {
+            : mLogger{spdlog::stdout_color_mt("FASTDET")} {
             mLogger->set_level(toSpdlogLevel(severity));
             mLogger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%s:%#] %v");
         }
 
         virtual ~Logger() = default;
 
-        void log(nvinfer1::ILogger::Severity severity, const char* msg) noexcept override {
+        void log(nvinfer1::ILogger::Severity severity, const char *msg) noexcept override {
             std::lock_guard<std::mutex> lock(mLogMutex);
             if (mLogger->should_log(toSpdlogLevel(severity))) {
                 mLogger->log(toSpdlogLevel(severity), msg);
             }
         }
 
-        template <typename... Args>
+        template<typename... Args>
         void logFormatted(nvinfer1::ILogger::Severity severity,
-            std::string_view msg,
-            const std::source_location& loc = std::source_location::current(),
-            Args&&... args) noexcept {
-
+                          std::string_view msg,
+                          const std::source_location &loc = std::source_location::current(),
+                          Args &&... args) noexcept {
             auto level = toSpdlogLevel(severity);
 
             if (mLogger->should_log(level)) {
@@ -57,11 +55,11 @@ namespace fastdet::common {
         static constexpr spdlog::level::level_enum toSpdlogLevel(nvinfer1::ILogger::Severity severity) noexcept {
             switch (severity) {
                 case nvinfer1::ILogger::Severity::kINTERNAL_ERROR: return spdlog::level::critical;
-                case nvinfer1::ILogger::Severity::kERROR:         return spdlog::level::err;
-                case nvinfer1::ILogger::Severity::kWARNING:       return spdlog::level::warn;
-                case nvinfer1::ILogger::Severity::kINFO:          return spdlog::level::info;
-                case nvinfer1::ILogger::Severity::kVERBOSE:       return spdlog::level::debug;
-                default:                                          return spdlog::level::info;
+                case nvinfer1::ILogger::Severity::kERROR: return spdlog::level::err;
+                case nvinfer1::ILogger::Severity::kWARNING: return spdlog::level::warn;
+                case nvinfer1::ILogger::Severity::kINFO: return spdlog::level::info;
+                case nvinfer1::ILogger::Severity::kVERBOSE: return spdlog::level::debug;
+                default: return spdlog::level::info;
             }
         }
 

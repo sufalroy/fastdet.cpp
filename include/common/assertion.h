@@ -15,30 +15,29 @@
 #endif
 
 namespace fastdet::common {
-
     class Assert {
     public:
-        template <typename... Args>
+        template<typename... Args>
         static void check(
             bool condition,
-            const std::source_location& loc,
+            const std::source_location &loc,
             std::string_view message,
-            Args&&... args) {
+            Args &&... args) {
             if (FASTDET_UNLIKELY(!condition)) {
                 gLogger.logFormatted(nvinfer1::ILogger::Severity::kINTERNAL_ERROR,
-                                    message,
-                                    loc,
-                                    std::forward<Args>(args)...);
+                                     message,
+                                     loc,
+                                     std::forward<Args>(args)...);
                 throw std::runtime_error(fmt::format(fmt::runtime(message), std::forward<Args>(args)...));
             }
         }
 
-        template <typename... Args>
+        template<typename... Args>
         static void checkDebug(
             bool condition,
-            const std::source_location& loc,
+            const std::source_location &loc,
             std::string_view message,
-            Args&&... args) {
+            Args &&... args) {
 #ifndef NDEBUG
             check(condition, loc, message, std::forward<Args>(args)...);
 #endif
