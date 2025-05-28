@@ -41,7 +41,7 @@ auto main(int argc, char *argv[]) -> int {
 
         std::string onnxPath = (argc > 1)
                                    ? argv[1]
-                                   : "C:/Laboratory/cpp-workspace/fastdet.cpp/models/YOLOv11-Detection.onnx";
+                                   : "/home/dev/Laboratory/fastdet.cpp/models/yolo11s.onnx";
         FASTDET_LOG_INFO("Using ONNX model: {}", onnxPath);
 
         fastdet::core::Options options;
@@ -58,12 +58,12 @@ auto main(int argc, char *argv[]) -> int {
 
         FASTDET_LOG_INFO("Building TensorRT engine from ONNX model");
         bool success = engine->build(onnxPath, options);
-
+        
         if (success) {
             FASTDET_LOG_INFO("Engine built successfully!");
 
             const std::string enginePath =
-                    "C:/Laboratory/cpp-workspace/fastdet.cpp/cmake-build-debug/src/engines/YOLOv11-Detection_fp16_b1_w640.engine";
+                    "/home/dev/Laboratory/fastdet.cpp/build/src/engines/yolo11s_fp16_b1_w640.engine";
 
             FASTDET_LOG_INFO("Loading built engine from: {}", enginePath);
             bool loadSuccess = engine->load(enginePath);

@@ -3,7 +3,7 @@
 #include "common/assertion.h"
 
 #include <fstream>
-#include <format>
+#include <fmt/format.h>
 #include <filesystem>
 
 namespace fastdet::core {
@@ -58,14 +58,14 @@ namespace fastdet::core {
 
         std::string batchStr = (mOptions.optBatchSize == mOptions.maxBatchSize)
                                    ? std::to_string(mOptions.optBatchSize)
-                                   : std::format("{}-{}", mOptions.optBatchSize, mOptions.maxBatchSize);
+                                   : fmt::format("{}-{}", mOptions.optBatchSize, mOptions.maxBatchSize);
 
         std::string widthStr = (mOptions.minInputWidth == mOptions.maxInputWidth)
                                    ? std::to_string(mOptions.optInputWidth)
-                                   : std::format("{}-{}-{}", mOptions.minInputWidth, mOptions.optInputWidth,
+                                   : fmt::format("{}-{}-{}", mOptions.minInputWidth, mOptions.optInputWidth,
                                                  mOptions.maxInputWidth);
 
-        std::string filename = std::format("{}_{}_b{}_w{}.engine", baseName, precStr, batchStr, widthStr);
+        std::string filename = fmt::format("{}_{}_b{}_w{}.engine", baseName, precStr, batchStr, widthStr);
         return (std::filesystem::path(mOptions.engineFileDir) / filename).string();
     }
 
@@ -119,7 +119,7 @@ namespace fastdet::core {
         bool supportsDynamicBatch = (input0Batch == -1);
         FASTDET_LOG_INFO("{}", supportsDynamicBatch ?
                          "Model supports dynamic batch size" :
-                         std::string("Model only supports fixed batch size of ") + std::to_string(input0Batch));
+                         fmt::format("Model only supports fixed batch size of {}", input0Batch));
 
         if (!supportsDynamicBatch) {
             FASTDET_ASSERT_MSG(mOptions.optBatchSize == input0Batch && mOptions.maxBatchSize == input0Batch,
@@ -132,7 +132,7 @@ namespace fastdet::core {
 
         FASTDET_LOG_INFO("{}", supportsDynamicWidth ?
                          "Model supports dynamic width" :
-                         std::string("Model only supports fixed width of ") + std::to_string(inputWidth));
+                         fmt::format("Model only supports fixed width of {}", inputWidth));
 
         if (supportsDynamicWidth) {
             FASTDET_ASSERT_MSG(mOptions.maxInputWidth >= mOptions.minInputWidth &&
