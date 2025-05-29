@@ -8,44 +8,44 @@
 
 namespace fastdet::core {
     TensorRTEngine::TensorRTEngine()
-        : mRuntime(nullptr), mCudaEngine(nullptr), mExecutionContext(nullptr), mOptions{} {
+        : mRuntime(nullptr), mEngine(nullptr), mContext(nullptr), mOptions{} {
     }
 
     TensorRTEngine::~TensorRTEngine() {
         clearGpuBuffers();
-        if (mCudaStream != nullptr) {
-            cudaStreamDestroy(mCudaStream);
-            mCudaStream = nullptr;
+        if (mStream != nullptr) {
+            cudaStreamDestroy(mStream);
+            mStream = nullptr;
         }
     }
 
     TensorRTEngine::TensorRTEngine(TensorRTEngine &&other) noexcept
         : mRuntime(std::move(other.mRuntime)),
-          mCudaEngine(std::move(other.mCudaEngine)),
-          mExecutionContext(std::move(other.mExecutionContext)),
-          mTensorInfos(std::move(other.mTensorInfos)),
+          mEngine(std::move(other.mEngine)),
+          mContext(std::move(other.mContext)),
+          mTensorSpecs(std::move(other.mTensorSpecs)),
           mBuffers(std::move(other.mBuffers)),
-          mCudaStream(other.mCudaStream),
+          mStream(other.mStream),
           mOptions(other.mOptions) {
-        other.mCudaStream = nullptr;
+        other.mStream = nullptr;
     }
 
     TensorRTEngine &TensorRTEngine::operator=(TensorRTEngine &&other) noexcept {
         if (this != &other) {
             clearGpuBuffers();
-            if (mCudaStream != nullptr) {
-                cudaStreamDestroy(mCudaStream);
+            if (mStream != nullptr) {
+                cudaStreamDestroy(mStream);
             }
 
             mRuntime = std::move(other.mRuntime);
-            mCudaEngine = std::move(other.mCudaEngine);
-            mExecutionContext = std::move(other.mExecutionContext);
-            mTensorInfos = std::move(other.mTensorInfos);
+            mEngine = std::move(other.mEngine);
+            mContext = std::move(other.mContext);
+            mTensorSpecs = std::move(other.mTensorSpecs);
             mBuffers = std::move(other.mBuffers);
-            mCudaStream = other.mCudaStream;
+            mStream = other.mStream;
             mOptions = other.mOptions;
 
-            other.mCudaStream = nullptr;
+            other.mStream = nullptr;
         }
 
         return *this;
@@ -56,29 +56,26 @@ namespace fastdet::core {
         std::string baseName = p.stem().string();
         std::string precStr = (mOptions.precision == Precision::FP16) ? "fp16" : "fp32";
 
-        std::string batchStr = (mOptions.optBatchSize == mOptions.maxBatchSize)
-                                   ? std::to_string(mOptions.optBatchSize)
-                                   : fmt::format("{}-{}", mOptions.optBatchSize, mOptions.maxBatchSize);
-
-        std::string widthStr = (mOptions.minInputWidth == mOptions.maxInputWidth)
-                                   ? std::to_string(mOptions.optInputWidth)
-                                   : fmt::format("{}-{}-{}", mOptions.minInputWidth, mOptions.optInputWidth,
-                                                 mOptions.maxInputWidth);
-
-        std::string filename = fmt::format("{}_{}_b{}_w{}.engine", baseName, precStr, batchStr, widthStr);
-        return (std::filesystem::path(mOptions.engineFileDir) / filename).string();
+        std::string filename = fmt::format("{}_{}_b{}_{}x{}.engine", 
+                                         baseName, precStr, mOptions.batchSize, 
+                                         mOptions.inputWidth, mOptions.inputHeight);
+        return (std::filesystem::path(mOptions.engineDir) / filename).string();
     }
 
     void TensorRTEngine::clearGpuBuffers() {
-        if (mCudaStream != nullptr) {
+        if (mStream != nullptr) {
             for (auto *buffer: mBuffers) {
-                if (buffer != nullptr) { cudaFreeAsync(buffer, mCudaStream); }
+                if (buffer != nullptr) { 
+                    cudaFreeAsync(buffer, mStream); 
+                }
             }
-            if (!mBuffers.empty()) { cudaStreamSynchronize(mCudaStream); }
+            if (!mBuffers.empty()) { 
+                cudaStreamSynchronize(mStream); 
+            }
         }
 
         mBuffers.clear();
-        mTensorInfos.clear();
+        mTensorSpecs.clear();
     }
 
     bool TensorRTEngine::build(const std::string &onnxPath, const Options &options) {
@@ -110,38 +107,6 @@ namespace fastdet::core {
         const auto numInputs = network->getNbInputs();
         FASTDET_ASSERT_MSG(numInputs > 0, "Model needs at least 1 input");
 
-        const auto input0Batch = network->getInput(0)->getDimensions().d[0];
-        for (int32_t i = 1; i < numInputs; ++i) {
-            FASTDET_ASSERT_MSG(network->getInput(i)->getDimensions().d[0] == input0Batch,
-                               "Model has multiple inputs with inconsistent batch sizes");
-        }
-
-        bool supportsDynamicBatch = (input0Batch == -1);
-        FASTDET_LOG_INFO("{}", supportsDynamicBatch ?
-                         "Model supports dynamic batch size" :
-                         fmt::format("Model only supports fixed batch size of {}", input0Batch));
-
-        if (!supportsDynamicBatch) {
-            FASTDET_ASSERT_MSG(mOptions.optBatchSize == input0Batch && mOptions.maxBatchSize == input0Batch,
-                               "Model only supports fixed batch size of {}. Must set optBatchSize and maxBatchSize accordingly",
-                               input0Batch);
-        }
-
-        const auto inputWidth = network->getInput(0)->getDimensions().d[3];
-        bool supportsDynamicWidth = (inputWidth == -1);
-
-        FASTDET_LOG_INFO("{}", supportsDynamicWidth ?
-                         "Model supports dynamic width" :
-                         fmt::format("Model only supports fixed width of {}", inputWidth));
-
-        if (supportsDynamicWidth) {
-            FASTDET_ASSERT_MSG(mOptions.maxInputWidth >= mOptions.minInputWidth &&
-                               mOptions.maxInputWidth >= mOptions.optInputWidth &&
-                               mOptions.minInputWidth <= mOptions.optInputWidth &&
-                               mOptions.minInputWidth >= 1,
-                               "Invalid values for min/opt/max input width");
-        }
-
         auto config = std::unique_ptr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
         FASTDET_ASSERT_MSG(config != nullptr, "Failed to create builder config");
 
@@ -155,54 +120,19 @@ namespace fastdet::core {
             FASTDET_LOG_INFO("Building network with FP32 precision");
         }
 
-        auto optProfile = builder->createOptimizationProfile();
-        FASTDET_ASSERT_MSG(optProfile != nullptr, "Failed to create optimization profile");
-
         for (int32_t i = 0; i < numInputs; ++i) {
             auto input = network->getInput(i);
-            auto inputName = input->getName();
             auto inputDims = input->getDimensions();
-            int32_t inputC = inputDims.d[1];
-            int32_t inputH = inputDims.d[2];
-            int32_t minWidth = supportsDynamicWidth ? mOptions.minInputWidth : inputDims.d[3];
-
-            nvinfer1::Dims4 minDims;
-            if (supportsDynamicBatch) {
-                minDims = nvinfer1::Dims4(1, inputC, inputH, minWidth);
-            } else {
-                minDims = nvinfer1::Dims4(input0Batch, inputC, inputH, minWidth);
-            }
-
-            nvinfer1::Dims4 optDims;
-            if (supportsDynamicWidth) {
-                optDims = nvinfer1::Dims4(mOptions.optBatchSize, inputC, inputH, mOptions.optInputWidth);
-            } else {
-                optDims = nvinfer1::Dims4(mOptions.optBatchSize, inputC, inputH, inputDims.d[3]);
-            }
-
-            nvinfer1::Dims4 maxDims;
-            if (supportsDynamicWidth) {
-                maxDims = nvinfer1::Dims4(mOptions.maxBatchSize, inputC, inputH, mOptions.maxInputWidth);
-            } else {
-                maxDims = nvinfer1::Dims4(mOptions.maxBatchSize, inputC, inputH, inputDims.d[3]);
-            }
-
-            optProfile->setDimensions(inputName, nvinfer1::OptProfileSelector::kMIN, minDims);
-            optProfile->setDimensions(inputName, nvinfer1::OptProfileSelector::kOPT, optDims);
-            optProfile->setDimensions(inputName, nvinfer1::OptProfileSelector::kMAX, maxDims);
-
-            FASTDET_LOG_INFO("Input '{}' dimensions set to: min={},{}x{}x{} opt={},{}x{}x{} max={},{}x{}x{}",
-                             inputName,
-                             minDims.d[0], minDims.d[1], minDims.d[2], minDims.d[3],
-                             optDims.d[0], optDims.d[1], optDims.d[2], optDims.d[3],
-                             maxDims.d[0], maxDims.d[1], maxDims.d[2], maxDims.d[3]);
+            
+            nvinfer1::Dims4 dims(mOptions.batchSize, inputDims.d[1], mOptions.inputHeight, mOptions.inputWidth);
+            input->setDimensions(dims);
+            
+            FASTDET_LOG_INFO("Input '{}' set to fixed dimensions: {}x{}x{}x{}", 
+                           input->getName(), dims.d[0], dims.d[1], dims.d[2], dims.d[3]);
         }
 
-        config->addOptimizationProfile(optProfile);
-
         cudaStream_t profileStream;
-        FASTDET_ASSERT_MSG(cudaStreamCreate(&profileStream) == cudaSuccess,
-                           "Failed to create CUDA stream for profiling");
+        FASTDET_ASSERT_MSG(cudaStreamCreate(&profileStream) == cudaSuccess, "Failed to create CUDA stream for profiling");
         config->setProfileStream(profileStream);
 
         FASTDET_LOG_INFO("Building TensorRT Engine. This may take a while...");
@@ -210,13 +140,13 @@ namespace fastdet::core {
         FASTDET_ASSERT_MSG(plan != nullptr, "Failed to build serialized network");
         FASTDET_LOG_INFO("TensorRT Engine built successfully");
 
-        std::string EnginePath = generateEnginePath(onnxPath);
-        std::filesystem::path dirPath = std::filesystem::path(mOptions.engineFileDir);
+        std::string enginePath = generateEnginePath(onnxPath);
+        std::filesystem::path dirPath = std::filesystem::path(mOptions.engineDir);
 
         try {
             if (!std::filesystem::exists(dirPath)) {
                 std::filesystem::create_directories(dirPath);
-                FASTDET_LOG_INFO("Created Engine directory: {}", mOptions.engineFileDir);
+                FASTDET_LOG_INFO("Created Engine directory: {}", mOptions.engineDir);
             }
         } catch (const std::filesystem::filesystem_error &e) {
             FASTDET_LOG_ERROR("Failed to create Engine directory: {}", e.what());
@@ -225,13 +155,13 @@ namespace fastdet::core {
         }
 
         try {
-            std::ofstream EngineFile(EnginePath, std::ios::binary);
-            FASTDET_ASSERT_MSG(EngineFile.is_open(), "Failed to open Engine file for writing: {}", EnginePath);
+            std::ofstream engineFile(enginePath, std::ios::binary);
+            FASTDET_ASSERT_MSG(engineFile.is_open(), "Failed to open Engine file for writing: {}", enginePath);
 
-            EngineFile.write(static_cast<const char *>(plan->data()), plan->size());
-            EngineFile.close();
+            engineFile.write(static_cast<const char *>(plan->data()), plan->size());
+            engineFile.close();
 
-            FASTDET_LOG_INFO("TensorRT Engine serialized to {}", EnginePath);
+            FASTDET_LOG_INFO("TensorRT Engine serialized to {}", enginePath);
         } catch (const std::exception &e) {
             FASTDET_LOG_ERROR("Failed to write Engine file: {}", e.what());
             cudaStreamDestroy(profileStream);
@@ -239,7 +169,6 @@ namespace fastdet::core {
         }
 
         cudaStreamDestroy(profileStream);
-
         return true;
     }
 
@@ -248,67 +177,75 @@ namespace fastdet::core {
 
         FASTDET_ASSERT_MSG(std::filesystem::exists(enginePath), "Engine file not found: {}", enginePath);
 
-        std::ifstream EngineFile(enginePath, std::ios::binary | std::ios::ate);
-        FASTDET_ASSERT_MSG(EngineFile.is_open(), "Failed to open Engine file: {}", enginePath);
+        std::ifstream engineFile(enginePath, std::ios::binary | std::ios::ate);
+        FASTDET_ASSERT_MSG(engineFile.is_open(), "Failed to open Engine file: {}", enginePath);
 
-        const auto size = EngineFile.tellg();
-        EngineFile.seekg(0, std::ios::beg);
+        const auto size = engineFile.tellg();
+        engineFile.seekg(0, std::ios::beg);
 
         std::vector<char> buffer(size);
-        FASTDET_ASSERT_MSG(EngineFile.read(buffer.data(), size).good(), "Failed to read engine file");
-        EngineFile.close();
+        FASTDET_ASSERT_MSG(engineFile.read(buffer.data(), size).good(), "Failed to read engine file");
+        engineFile.close();
 
         mRuntime = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(gLogger));
         FASTDET_ASSERT_MSG(mRuntime != nullptr, "Failed to create TensorRT runtime");
 
-        mCudaEngine = std::unique_ptr<
-            nvinfer1::ICudaEngine>(mRuntime->deserializeCudaEngine(buffer.data(), buffer.size()));
-        FASTDET_ASSERT_MSG(mCudaEngine != nullptr, "Failed to deserialize CUDA engine");
+        mEngine = std::unique_ptr<nvinfer1::ICudaEngine>(mRuntime->deserializeCudaEngine(buffer.data(), buffer.size()));
+        FASTDET_ASSERT_MSG(mEngine != nullptr, "Failed to deserialize CUDA engine");
 
-        mExecutionContext = std::unique_ptr<nvinfer1::IExecutionContext>(mCudaEngine->createExecutionContext());
-        FASTDET_ASSERT_MSG(mExecutionContext != nullptr, "Failed to create execution context");
+        mContext = std::unique_ptr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
+        FASTDET_ASSERT_MSG(mContext != nullptr, "Failed to create execution context");
 
         clearGpuBuffers();
 
-        FASTDET_ASSERT_MSG(cudaStreamCreate(&mCudaStream) == cudaSuccess, "Failed to create CUDA stream");
+        FASTDET_ASSERT_MSG(cudaStreamCreate(&mStream) == cudaSuccess, "Failed to create CUDA stream");
 
-        const int32_t numTensors = mCudaEngine->getNbIOTensors();
-        mTensorInfos.reserve(numTensors);
+        const int32_t numTensors = mEngine->getNbIOTensors();
+        mTensorSpecs.reserve(numTensors);
         mBuffers.resize(numTensors, nullptr);
         FASTDET_LOG_INFO("Engine loaded with {} I/O tensors", numTensors);
 
         for (int32_t i = 0; i < numTensors; ++i) {
-            const auto *name = mCudaEngine->getIOTensorName(i);
+            const auto *name = mEngine->getIOTensorName(i);
 
-            TensorInfo tensorInfo{
+            TensorSpec tensorSpec{
                 .name = name,
-                .dims = mCudaEngine->getTensorShape(name),
-                .dataType = mCudaEngine->getTensorDataType(name),
-                .mode = mCudaEngine->getTensorIOMode(name)
+                .shape = mEngine->getTensorShape(name),
+                .dataType = mEngine->getTensorDataType(name),
+                .ioMode = mEngine->getTensorIOMode(name)
             };
 
-            tensorInfo.size = tensorInfo.getTotalElements() * tensorInfo.getElementSize();
-            FASTDET_ASSERT_MSG(tensorInfo.getElementSize() > 0, "Unsupported data type: {}", tensorInfo.name);
+            tensorSpec.byteSize = tensorSpec.getElementCount() * tensorSpec.getElementSize();
+            FASTDET_ASSERT_MSG(tensorSpec.getElementSize() > 0, "Unsupported data type: {}", tensorSpec.name);
 
-            if (tensorInfo.mode == nvinfer1::TensorIOMode::kINPUT) {
-                FASTDET_ASSERT_MSG(tensorInfo.dataType == nvinfer1::DataType::kFLOAT, "Input must be float32: {}",
-                                   tensorInfo.name);
+            if (tensorSpec.ioMode == nvinfer1::TensorIOMode::kINPUT) {
+                FASTDET_ASSERT_MSG(tensorSpec.dataType == nvinfer1::DataType::kFLOAT, 
+                                   "Input tensor '{}' must be float32, got unsupported type", tensorSpec.name);
 
                 FASTDET_LOG_INFO("Input '{}': {}x{}x{}x{} ({} bytes)",
-                                 tensorInfo.name, tensorInfo.dims.d[0], tensorInfo.dims.d[1],
-                                 tensorInfo.dims.d[2], tensorInfo.dims.d[3], tensorInfo.size);
-            } else if (tensorInfo.mode == nvinfer1::TensorIOMode::kOUTPUT) {
-                FASTDET_ASSERT_MSG(cudaMallocAsync(&mBuffers[i], tensorInfo.size, mCudaStream) == cudaSuccess,
-                                   "GPU allocation failed: {}", tensorInfo.name);
-                FASTDET_LOG_INFO("Output '{}': {} elements ({} bytes)", tensorInfo.name, tensorInfo.getTotalElements(),
-                                 tensorInfo.size);
+                                 tensorSpec.name, tensorSpec.shape.d[0], tensorSpec.shape.d[1],
+                                 tensorSpec.shape.d[2], tensorSpec.shape.d[3], tensorSpec.byteSize);
+            } else if (tensorSpec.ioMode == nvinfer1::TensorIOMode::kOUTPUT) {
+                if (tensorSpec.dataType == nvinfer1::DataType::kINT8) {
+                    FASTDET_ASSERT_MSG(false, "Output tensor '{}' has unsupported INT8 precision", tensorSpec.name);
+                }
+                if (tensorSpec.dataType == nvinfer1::DataType::kFP8) {
+                    FASTDET_ASSERT_MSG(false, "Output tensor '{}' has unsupported FP8 precision", tensorSpec.name);
+                }
+
+                FASTDET_ASSERT_MSG(cudaMallocAsync(&mBuffers[i], tensorSpec.byteSize, mStream) == cudaSuccess,
+                                   "GPU allocation failed for tensor: {}", tensorSpec.name);
+                FASTDET_LOG_INFO("Output '{}': {} elements ({} bytes)", tensorSpec.name, tensorSpec.getElementCount(),
+                                 tensorSpec.byteSize);
+            } else {
+                FASTDET_ASSERT_MSG(false, "Tensor '{}' is neither input nor output", tensorSpec.name);
             }
 
-            mTensorInfos.emplace_back(std::move(tensorInfo));
+            mTensorSpecs.emplace_back(std::move(tensorSpec));
         }
 
-        FASTDET_ASSERT_MSG(cudaStreamSynchronize(mCudaStream) == cudaSuccess, "Stream synchronization failed");
-        FASTDET_LOG_INFO("Engine loaded: {} tensors configured", mTensorInfos.size());
+        FASTDET_ASSERT_MSG(cudaStreamSynchronize(mStream) == cudaSuccess, "Stream synchronization failed");
+        FASTDET_LOG_INFO("Engine loaded: {} tensors configured", mTensorSpecs.size());
 
         return true;
     }

@@ -25,8 +25,7 @@ void printDeviceInfo() {
         if (error == cudaSuccess) {
             FASTDET_LOG_INFO("Device {}: {}", i, properties.name);
             FASTDET_LOG_INFO("  Compute capability: {}.{}", properties.major, properties.minor);
-            FASTDET_LOG_INFO("  Total global memory: {:.2f} GB",
-                             static_cast<float>(properties.totalGlobalMem) / (1024 * 1024 * 1024));
+            FASTDET_LOG_INFO("  Total global memory: {:.2f} GB", static_cast<float>(properties.totalGlobalMem) / (1024 * 1024 * 1024));
             FASTDET_LOG_INFO("  Multiprocessors: {}", properties.multiProcessorCount);
         }
     }
@@ -42,28 +41,28 @@ auto main(int argc, char *argv[]) -> int {
         std::string onnxPath = (argc > 1)
                                    ? argv[1]
                                    : "/home/dev/Laboratory/fastdet.cpp/models/yolo11s.onnx";
+
         FASTDET_LOG_INFO("Using ONNX model: {}", onnxPath);
 
         fastdet::core::Options options;
         options.precision = fastdet::core::Precision::FP16;
-        options.optBatchSize = 1;
-        options.maxBatchSize = 1;
-        options.minInputWidth = 640;
-        options.optInputWidth = 640;
-        options.maxInputWidth = 640;
-        options.engineFileDir = "./engines";
+        options.batchSize = 1;
+        options.inputWidth = 640;
+        options.inputHeight = 640;
+        options.engineDir = "./engines";
 
         FASTDET_LOG_INFO("Creating engine instance");
         std::unique_ptr<fastdet::core::IEngine> engine = std::make_unique<fastdet::core::TensorRTEngine>();
 
         FASTDET_LOG_INFO("Building TensorRT engine from ONNX model");
         bool success = engine->build(onnxPath, options);
-        
+
+        bool success = true;
+
         if (success) {
             FASTDET_LOG_INFO("Engine built successfully!");
 
-            const std::string enginePath =
-                    "/home/dev/Laboratory/fastdet.cpp/build/src/engines/yolo11s_fp16_b1_w640.engine";
+            const std::string enginePath = "/home/dev/Laboratory/fastdet.cpp/build/src/engines/yolo11s_fp16_b1_640x640.engine";
 
             FASTDET_LOG_INFO("Loading built engine from: {}", enginePath);
             bool loadSuccess = engine->load(enginePath);
