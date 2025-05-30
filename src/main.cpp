@@ -57,15 +57,17 @@ auto main(int argc, char *argv[]) -> int {
         FASTDET_LOG_INFO("Building TensorRT engine from ONNX model");
         bool success = engine->build(onnxPath, options);
 
-        bool success = true;
-
         if (success) {
             FASTDET_LOG_INFO("Engine built successfully!");
-
+            
             const std::string enginePath = "/home/dev/Laboratory/fastdet.cpp/build/src/engines/yolo11s_fp16_b1_640x640.engine";
+            
+            std::array<float, 3> subVals{0.f, 0.f, 0.f};
+            std::array<float, 3> divVals{1.f, 1.f, 1.f};
+            bool normalize = true;
 
             FASTDET_LOG_INFO("Loading built engine from: {}", enginePath);
-            bool loadSuccess = engine->load(enginePath);
+            bool loadSuccess = engine->load(enginePath, subVals, divVals, normalize);
 
             if (loadSuccess) {
                 FASTDET_LOG_INFO("Engine loaded successfully!");

@@ -10,6 +10,7 @@
 #include <vector>
 
 namespace fastdet::core {
+
     struct TensorSpec {
         std::string name;
         nvinfer1::Dims shape;
@@ -48,7 +49,12 @@ namespace fastdet::core {
         TensorRTEngine &operator=(TensorRTEngine &&other) noexcept;
 
         bool build(const std::string &onnxPath, const Options &options) override;
-        bool load(const std::string &enginePath) override;
+        
+        bool load(const std::string &enginePath, const std::array<float, 3> &subVals, const std::array<float, 3> &divVals, bool normalize) override;
+        
+        [[nodiscard]] const std::vector<TensorSpec> &getTensorSpecs() const noexcept { return mTensorSpecs; }
+        
+        [[nodiscard]] const Options &getOptions() const noexcept { return mOptions; }
 
     private:
         [[nodiscard]] std::string generateEnginePath(const std::string &onnxPath) const;
@@ -58,7 +64,10 @@ namespace fastdet::core {
 
         std::vector<TensorSpec> mTensorSpecs;
         std::vector<void *> mBuffers;
-        cudaStream_t mStream{nullptr};
+                
+        std::array<float, 3> mSubVals{};
+        std::array<float, 3> mDivVals{};
+        bool mNormalize;
 
         std::unique_ptr<nvinfer1::IRuntime> mRuntime;
         std::unique_ptr<nvinfer1::ICudaEngine> mEngine;

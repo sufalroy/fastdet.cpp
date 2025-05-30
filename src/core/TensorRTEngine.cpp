@@ -7,16 +7,13 @@
 #include <filesystem>
 
 namespace fastdet::core {
+
     TensorRTEngine::TensorRTEngine()
         : mRuntime(nullptr), mEngine(nullptr), mContext(nullptr), mOptions{} {
     }
 
     TensorRTEngine::~TensorRTEngine() {
         clearGpuBuffers();
-        if (mStream != nullptr) {
-            cudaStreamDestroy(mStream);
-            mStream = nullptr;
-        }
     }
 
     TensorRTEngine::TensorRTEngine(TensorRTEngine &&other) noexcept
@@ -25,27 +22,19 @@ namespace fastdet::core {
           mContext(std::move(other.mContext)),
           mTensorSpecs(std::move(other.mTensorSpecs)),
           mBuffers(std::move(other.mBuffers)),
-          mStream(other.mStream),
           mOptions(other.mOptions) {
-        other.mStream = nullptr;
     }
 
     TensorRTEngine &TensorRTEngine::operator=(TensorRTEngine &&other) noexcept {
         if (this != &other) {
             clearGpuBuffers();
-            if (mStream != nullptr) {
-                cudaStreamDestroy(mStream);
-            }
 
             mRuntime = std::move(other.mRuntime);
             mEngine = std::move(other.mEngine);
             mContext = std::move(other.mContext);
             mTensorSpecs = std::move(other.mTensorSpecs);
             mBuffers = std::move(other.mBuffers);
-            mStream = other.mStream;
             mOptions = other.mOptions;
-
-            other.mStream = nullptr;
         }
 
         return *this;
@@ -55,26 +44,24 @@ namespace fastdet::core {
         std::filesystem::path p(onnxPath);
         std::string baseName = p.stem().string();
         std::string precStr = (mOptions.precision == Precision::FP16) ? "fp16" : "fp32";
-
         std::string filename = fmt::format("{}_{}_b{}_{}x{}.engine", 
                                          baseName, precStr, mOptions.batchSize, 
                                          mOptions.inputWidth, mOptions.inputHeight);
+
         return (std::filesystem::path(mOptions.engineDir) / filename).string();
     }
 
     void TensorRTEngine::clearGpuBuffers() {
-        if (mStream != nullptr) {
-            for (auto *buffer: mBuffers) {
-                if (buffer != nullptr) { 
-                    cudaFreeAsync(buffer, mStream); 
+        if (!mBuffers.empty()) {
+             for (size_t i = 0; i < mTensorSpecs.size(); ++i) {
+                if (mTensorSpecs[i].ioMode == nvinfer1::TensorIOMode::kOUTPUT && 
+                    mBuffers[i] != nullptr) {
+                    cudaFree(mBuffers[i]);
+                    mBuffers[i] = nullptr;
                 }
             }
-            if (!mBuffers.empty()) { 
-                cudaStreamSynchronize(mStream); 
-            }
+            mBuffers.clear();
         }
-
-        mBuffers.clear();
         mTensorSpecs.clear();
     }
 
@@ -172,79 +159,86 @@ namespace fastdet::core {
         return true;
     }
 
-    bool TensorRTEngine::load(const std::string &enginePath) {
+    bool TensorRTEngine::load(const std::string &enginePath, const std::array<float, 3> &subVals, const std::array<float, 3> &divVals, bool normalize) {
+        mSubVals = subVals;
+        mDivVals = divVals;
+        mNormalize = normalize;  
+
         FASTDET_LOG_INFO("Loading TensorRT engine from {}", enginePath);
-
+        
         FASTDET_ASSERT_MSG(std::filesystem::exists(enginePath), "Engine file not found: {}", enginePath);
-
+        
         std::ifstream engineFile(enginePath, std::ios::binary | std::ios::ate);
         FASTDET_ASSERT_MSG(engineFile.is_open(), "Failed to open Engine file: {}", enginePath);
-
+        
         const auto size = engineFile.tellg();
         engineFile.seekg(0, std::ios::beg);
-
+        
         std::vector<char> buffer(size);
         FASTDET_ASSERT_MSG(engineFile.read(buffer.data(), size).good(), "Failed to read engine file");
         engineFile.close();
-
+        
         mRuntime = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(gLogger));
         FASTDET_ASSERT_MSG(mRuntime != nullptr, "Failed to create TensorRT runtime");
-
+        
         mEngine = std::unique_ptr<nvinfer1::ICudaEngine>(mRuntime->deserializeCudaEngine(buffer.data(), buffer.size()));
         FASTDET_ASSERT_MSG(mEngine != nullptr, "Failed to deserialize CUDA engine");
-
+        
         mContext = std::unique_ptr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
         FASTDET_ASSERT_MSG(mContext != nullptr, "Failed to create execution context");
-
+        
         clearGpuBuffers();
-
-        FASTDET_ASSERT_MSG(cudaStreamCreate(&mStream) == cudaSuccess, "Failed to create CUDA stream");
-
         const int32_t numTensors = mEngine->getNbIOTensors();
         mTensorSpecs.reserve(numTensors);
         mBuffers.resize(numTensors, nullptr);
         FASTDET_LOG_INFO("Engine loaded with {} I/O tensors", numTensors);
 
+        cudaStream_t stream;
+        FASTDET_ASSERT_MSG(cudaStreamCreate(&stream) == cudaSuccess, "Failed to create CUDA stream for execution");
+
         for (int32_t i = 0; i < numTensors; ++i) {
             const auto *name = mEngine->getIOTensorName(i);
-
+            
             TensorSpec tensorSpec{
                 .name = name,
                 .shape = mEngine->getTensorShape(name),
                 .dataType = mEngine->getTensorDataType(name),
                 .ioMode = mEngine->getTensorIOMode(name)
             };
-
+            
             tensorSpec.byteSize = tensorSpec.getElementCount() * tensorSpec.getElementSize();
             FASTDET_ASSERT_MSG(tensorSpec.getElementSize() > 0, "Unsupported data type: {}", tensorSpec.name);
-
+            
             if (tensorSpec.ioMode == nvinfer1::TensorIOMode::kINPUT) {
-                FASTDET_ASSERT_MSG(tensorSpec.dataType == nvinfer1::DataType::kFLOAT, 
-                                   "Input tensor '{}' must be float32, got unsupported type", tensorSpec.name);
-
-                FASTDET_LOG_INFO("Input '{}': {}x{}x{}x{} ({} bytes)",
-                                 tensorSpec.name, tensorSpec.shape.d[0], tensorSpec.shape.d[1],
-                                 tensorSpec.shape.d[2], tensorSpec.shape.d[3], tensorSpec.byteSize);
+                FASTDET_ASSERT_MSG(tensorSpec.dataType == nvinfer1::DataType::kFLOAT, "Input tensor '{}' must be float32, got unsupported type", tensorSpec.name);
+                FASTDET_LOG_INFO("Input '{}': {}x{}x{}x{} ({} bytes) - No GPU allocation (external buffer expected)",
+                    tensorSpec.name, tensorSpec.shape.d[0], tensorSpec.shape.d[1], tensorSpec.shape.d[2], tensorSpec.shape.d[3], tensorSpec.byteSize);         
+                
             } else if (tensorSpec.ioMode == nvinfer1::TensorIOMode::kOUTPUT) {
                 if (tensorSpec.dataType == nvinfer1::DataType::kINT8) {
                     FASTDET_ASSERT_MSG(false, "Output tensor '{}' has unsupported INT8 precision", tensorSpec.name);
                 }
+
                 if (tensorSpec.dataType == nvinfer1::DataType::kFP8) {
                     FASTDET_ASSERT_MSG(false, "Output tensor '{}' has unsupported FP8 precision", tensorSpec.name);
                 }
+                
+                FASTDET_ASSERT_MSG(cudaMallocAsync(&mBuffers[i], tensorSpec.byteSize, stream) == cudaSuccess, "GPU allocation failed for tensor: {}", tensorSpec.name);
+                
+                FASTDET_LOG_INFO("Output '{}': {} elements ({} bytes) of shape {}x{}x{} - GPU memory allocated", 
+                    tensorSpec.name, tensorSpec.getElementCount(), tensorSpec.byteSize,
+                    tensorSpec.shape.d[0], tensorSpec.shape.d[1], tensorSpec.shape.d[2], tensorSpec.shape.d[3]);
 
-                FASTDET_ASSERT_MSG(cudaMallocAsync(&mBuffers[i], tensorSpec.byteSize, mStream) == cudaSuccess,
-                                   "GPU allocation failed for tensor: {}", tensorSpec.name);
-                FASTDET_LOG_INFO("Output '{}': {} elements ({} bytes)", tensorSpec.name, tensorSpec.getElementCount(),
-                                 tensorSpec.byteSize);
             } else {
                 FASTDET_ASSERT_MSG(false, "Tensor '{}' is neither input nor output", tensorSpec.name);
             }
-
+            
             mTensorSpecs.emplace_back(std::move(tensorSpec));
         }
-
-        FASTDET_ASSERT_MSG(cudaStreamSynchronize(mStream) == cudaSuccess, "Stream synchronization failed");
+        
+        FASTDET_ASSERT_MSG(cudaStreamSynchronize(stream) == cudaSuccess, "Failed to synchronize CUDA stream after loading engine");
+        cudaStreamDestroy(stream);
+        
         FASTDET_LOG_INFO("Engine loaded: {} tensors configured", mTensorSpecs.size());
 
         return true;
