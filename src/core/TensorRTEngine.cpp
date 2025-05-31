@@ -64,6 +64,54 @@ namespace fastdet::core {
         }
         mTensorSpecs.clear();
     }
+    
+    cv::cuda::GpuMat TensorRTEngine::blobFromGpuMats(const std::vector<cv::cuda::GpuMat>& batchInput,
+                                                    const std::array<float, 3>& subVals,
+                                                    const std::array<float, 3>& divVals,
+                                                    bool normalize,
+                                                    bool swapRB) const {                                                
+        FASTDET_ASSERT_MSG(!batchInput.empty(), "Batch input cannot be empty");
+        FASTDET_ASSERT_MSG(batchInput[0].channels() == 3, "Input must have 3 channels");
+        
+        cv::cuda::GpuMat gpu_dst(1, batchInput[0].rows * batchInput[0].cols * batchInput.size(), CV_8UC3);
+        
+        size_t width = batchInput[0].cols * batchInput[0].rows;
+        if (swapRB) {
+            for (size_t img = 0; img < batchInput.size(); ++img) {
+
+                std::vector<cv::cuda::GpuMat> input_channels{
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width * 2 + width * 3 * img])),
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width + width * 3 * img])),
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[0 + width * 3 * img]))};
+                
+                cv::cuda::split(batchInput[img], input_channels);
+            }
+        } else {
+            for (size_t img = 0; img < batchInput.size(); ++img) {
+
+                std::vector<cv::cuda::GpuMat> input_channels{
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[0 + width * 3 * img])),
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width + width * 3 * img])),
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width * 2 + width * 3 * img]))};
+                
+                cv::cuda::split(batchInput[img], input_channels);
+            }
+        }
+        
+        cv::cuda::GpuMat blob;
+        
+        if (normalize) {
+            gpu_dst.convertTo(blob, CV_32FC3, 1.f / 255.f);
+        } else {
+            gpu_dst.convertTo(blob, CV_32FC3);
+        }
+        
+        cv::cuda::subtract(blob, cv::Scalar(subVals[0], subVals[1], subVals[2]), blob, cv::noArray(), -1);
+        cv::cuda::divide(blob, cv::Scalar(divVals[0], divVals[1], divVals[2]), blob, 1, -1);
+        
+        return blob;
+    }
+
 
     bool TensorRTEngine::build(const std::string &onnxPath, const Options &options) {
         mOptions = options;
@@ -114,8 +162,7 @@ namespace fastdet::core {
             nvinfer1::Dims4 dims(mOptions.batchSize, inputDims.d[1], mOptions.inputHeight, mOptions.inputWidth);
             input->setDimensions(dims);
             
-            FASTDET_LOG_INFO("Input '{}' set to fixed dimensions: {}x{}x{}x{}", 
-                           input->getName(), dims.d[0], dims.d[1], dims.d[2], dims.d[3]);
+            FASTDET_LOG_INFO("Input '{}' set to fixed dimensions: {}x{}x{}x{}", input->getName(), dims.d[0], dims.d[1], dims.d[2], dims.d[3]);
         }
 
         cudaStream_t profileStream;
@@ -137,7 +184,7 @@ namespace fastdet::core {
             }
         } catch (const std::filesystem::filesystem_error &e) {
             FASTDET_LOG_ERROR("Failed to create Engine directory: {}", e.what());
-            cudaStreamDestroy(profileStream);
+            FASTDET_ASSERT_MSG(cudaStreamDestroy(profileStream) == cudaSuccess, "Failed to destroy CUDA stream");
             return false;
         }
 
@@ -151,11 +198,11 @@ namespace fastdet::core {
             FASTDET_LOG_INFO("TensorRT Engine serialized to {}", enginePath);
         } catch (const std::exception &e) {
             FASTDET_LOG_ERROR("Failed to write Engine file: {}", e.what());
-            cudaStreamDestroy(profileStream);
+            FASTDET_ASSERT_MSG(cudaStreamDestroy(profileStream) == cudaSuccess, "Failed to destroy CUDA stream");
             return false;
         }
 
-        cudaStreamDestroy(profileStream);
+        FASTDET_ASSERT_MSG(cudaStreamDestroy(profileStream) == cudaSuccess, "Failed to destroy CUDA stream");
         return true;
     }
 
@@ -211,7 +258,8 @@ namespace fastdet::core {
             
             if (tensorSpec.ioMode == nvinfer1::TensorIOMode::kINPUT) {
                 FASTDET_ASSERT_MSG(tensorSpec.dataType == nvinfer1::DataType::kFLOAT, "Input tensor '{}' must be float32, got unsupported type", tensorSpec.name);
-                FASTDET_LOG_INFO("Input '{}': {}x{}x{}x{} ({} bytes) - No GPU allocation (external buffer expected)",
+                
+                FASTDET_LOG_INFO("Input '{}': {}x{}x{}x{} ({} bytes)",
                     tensorSpec.name, tensorSpec.shape.d[0], tensorSpec.shape.d[1], tensorSpec.shape.d[2], tensorSpec.shape.d[3], tensorSpec.byteSize);         
                 
             } else if (tensorSpec.ioMode == nvinfer1::TensorIOMode::kOUTPUT) {
@@ -225,7 +273,7 @@ namespace fastdet::core {
                 
                 FASTDET_ASSERT_MSG(cudaMallocAsync(&mBuffers[i], tensorSpec.byteSize, stream) == cudaSuccess, "GPU allocation failed for tensor: {}", tensorSpec.name);
                 
-                FASTDET_LOG_INFO("Output '{}': {} elements ({} bytes) of shape {}x{}x{} - GPU memory allocated", 
+                FASTDET_LOG_INFO("Output '{}': {} elements ({} bytes) of shape {}x{}x{}", 
                     tensorSpec.name, tensorSpec.getElementCount(), tensorSpec.byteSize,
                     tensorSpec.shape.d[0], tensorSpec.shape.d[1], tensorSpec.shape.d[2], tensorSpec.shape.d[3]);
 
@@ -237,10 +285,107 @@ namespace fastdet::core {
         }
         
         FASTDET_ASSERT_MSG(cudaStreamSynchronize(stream) == cudaSuccess, "Failed to synchronize CUDA stream after loading engine");
-        cudaStreamDestroy(stream);
+        FASTDET_ASSERT_MSG(cudaStreamDestroy(stream) == cudaSuccess, "Failed to destroy CUDA stream");
         
         FASTDET_LOG_INFO("Engine loaded: {} tensors configured", mTensorSpecs.size());
 
+        return true;
+    }
+    
+    bool TensorRTEngine::infer(const std::vector<std::vector<cv::cuda::GpuMat>>& inputs, std::vector<std::vector<std::vector<float>>>& outputs) {
+        FASTDET_ASSERT_MSG(!inputs.empty() && !inputs[0].empty(), "Input vector cannot be empty");
+        FASTDET_ASSERT_MSG(mEngine != nullptr && mContext != nullptr, "Engine and context must be initialized before inference");
+        
+        const auto batchSize = static_cast<int32_t>(inputs[0].size());
+        const auto inputCount = std::ranges::count_if(mTensorSpecs, [](const auto& spec) { return spec.ioMode == nvinfer1::TensorIOMode::kINPUT; });
+        
+        FASTDET_ASSERT_MSG(inputs.size() == static_cast<size_t>(inputCount), "Expected {} input tensors, got {}", inputCount, inputs.size());
+        
+        for (size_t i = 1; i < inputs.size(); ++i) {
+            FASTDET_ASSERT_MSG(inputs[i].size() == static_cast<size_t>(batchSize), "Inconsistent batch size: input[0] has {}, input[{}] has {}", batchSize, i, inputs[i].size());
+        }
+        
+        FASTDET_LOG_INFO("Starting inference with batch size: {}", batchSize);
+        
+        cudaStream_t stream;
+        FASTDET_ASSERT_MSG(cudaStreamCreate(&stream) == cudaSuccess, "Failed to create CUDA stream");
+        
+        std::vector<cv::cuda::GpuMat> preprocessedInputs;
+        preprocessedInputs.reserve(inputs.size());
+        
+        size_t inputIndex = 0;
+        
+        for (size_t i = 0; i < mTensorSpecs.size(); ++i) {
+            const auto& spec = mTensorSpecs[i];
+            
+            if (spec.ioMode == nvinfer1::TensorIOMode::kINPUT) {
+                
+                FASTDET_ASSERT_MSG(inputIndex < inputs.size(), "Input index out of bounds");
+                
+                const auto& batchInput = inputs[inputIndex];
+                const auto& first = batchInput[0];
+
+                const auto [exp_c, exp_h, exp_w] = std::make_tuple(spec.shape.d[1], spec.shape.d[2], spec.shape.d[3]);
+                
+                FASTDET_ASSERT_MSG(first.channels() == exp_c && first.rows == exp_h && first.cols == exp_w,
+                                 "Input '{}' dimension mismatch. Expected: {}x{}x{}, Got: {}x{}x{}",
+                                 spec.name, exp_c, exp_h, exp_w, first.channels(), first.rows, first.cols);
+                                 
+                nvinfer1::Dims4 dims{batchSize, exp_c, exp_h, exp_w};
+                FASTDET_ASSERT_MSG(mContext->setInputShape(spec.name.c_str(), dims), "Failed to set input shape for tensor '{}'", spec.name);
+                
+                auto preprocessedInput = blobFromGpuMats(batchInput, mSubVals, mDivVals, mNormalize);
+                preprocessedInputs.emplace_back(std::move(preprocessedInput));
+                
+                FASTDET_ASSERT_MSG(mContext->setTensorAddress(spec.name.c_str(), preprocessedInputs.back().ptr<void>()), "Failed to set tensor address for input '{}'", spec.name);
+                FASTDET_LOG_INFO("Input '{}' configured: batch_size={}, shape={}x{}x{}", spec.name, batchSize, exp_c, exp_h, exp_w);
+                
+                ++inputIndex;
+            } else {
+                FASTDET_ASSERT_MSG(mContext->setTensorAddress(spec.name.c_str(), mBuffers[i]), "Failed to set tensor address for output '{}'", spec.name);
+            }
+        }
+        
+        FASTDET_ASSERT_MSG(mContext->allInputDimensionsSpecified(), "Not all required input dimensions have been specified");
+        
+        FASTDET_LOG_INFO("Executing inference...");
+        FASTDET_ASSERT_MSG(mContext->enqueueV3(stream), "Inference execution failed");
+        
+        const auto outputCount = std::ranges::count_if(mTensorSpecs, [](const auto& spec) { return spec.ioMode == nvinfer1::TensorIOMode::kOUTPUT; });
+        
+        outputs.clear();
+        outputs.reserve(batchSize);
+        
+        for (int32_t b = 0; b < batchSize; ++b) {
+            std::vector<std::vector<float>> batchOutput;
+            batchOutput.reserve(outputCount);
+            
+            for (size_t i = 0; i < mTensorSpecs.size(); ++i) {
+                const auto& spec = mTensorSpecs[i];
+                
+                if (spec.ioMode == nvinfer1::TensorIOMode::kOUTPUT) {
+                    const size_t elemPerBatch = spec.getElementCount() / batchSize;
+                    const size_t bytesPerBatch = elemPerBatch * spec.getElementSize();
+                    
+                    std::vector<float> output(elemPerBatch);
+                    
+                    const auto* src = static_cast<const char*>(mBuffers[i]) + (b * bytesPerBatch);
+                    
+                    FASTDET_ASSERT_MSG(cudaMemcpyAsync(output.data(), src, bytesPerBatch, cudaMemcpyDeviceToHost, stream) == cudaSuccess, 
+                                    "Failed to copy output data for tensor '{}', batch {}", spec.name, b);
+                    
+                    batchOutput.emplace_back(std::move(output));
+                }
+            }
+            
+            outputs.emplace_back(std::move(batchOutput));
+        }
+        
+        FASTDET_ASSERT_MSG(cudaStreamSynchronize(stream) == cudaSuccess, "Failed to synchronize CUDA stream");
+        FASTDET_ASSERT_MSG(cudaStreamDestroy(stream) == cudaSuccess, "Failed to destroy CUDA stream");
+        
+        FASTDET_LOG_INFO("Inference completed successfully. Processed {} batches with {} output tensors each", batchSize, outputCount);
+        
         return true;
     }
 }

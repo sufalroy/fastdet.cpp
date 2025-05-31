@@ -11,6 +11,7 @@ target_include_directories(runtime
         ${TensorRT_INCLUDE_DIR}
         ${CUDAToolkit_INCLUDE_DIRS}
         ${cuDNN_INCLUDE_DIRS}
+        ${OpenCV_INCLUDE_DIRS}
 )
 
 target_link_libraries(runtime
@@ -24,6 +25,7 @@ target_link_libraries(runtime
         CUDA::cudart
         CUDA::cuda_driver
         ${cuDNN_LIBRARIES}
+        ${OpenCV_LIBS}
 )
 
 fastdet_set_project_warnings(runtime ON "" "" "" "")

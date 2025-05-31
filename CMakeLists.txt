@@ -36,4 +36,11 @@ find_package(CUDAToolkit REQUIRED)
 find_package(cuDNN REQUIRED)
 find_package(TensorRT 10 REQUIRED COMPONENTS OnnxParser Plugin)
 
+set(OpenCV_DIR "/opt/opencv-cuda/lib/cmake/opencv4")
+
+unset(OpenCV_FOUND CACHE)
+unset(OpenCV_INCLUDE_DIRS CACHE)
+unset(OpenCV_LIBS CACHE)
+find_package(OpenCV 4.11.0 REQUIRED)
+
 add_subdirectory(src)

@@ -2,16 +2,22 @@
 
 #include "IEngine.h"
 
-#include <NvInfer.h>
-#include <NvOnnxParser.h>
-#include <cuda_runtime_api.h>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <NvInfer.h>
+#include <NvOnnxParser.h>
+#include <cuda_runtime_api.h>
+#include <opencv2/core/cuda.hpp>
+#include <opencv2/cudaarithm.hpp>
+#include <opencv2/cudaimgproc.hpp>
+#include <opencv2/cudawarping.hpp>
+#include <opencv2/opencv.hpp>
+
 namespace fastdet::core {
 
-    struct TensorSpec {
+    struct TensorSpec { 
         std::string name;
         nvinfer1::Dims shape;
         nvinfer1::DataType dataType;
@@ -52,13 +58,18 @@ namespace fastdet::core {
         
         bool load(const std::string &enginePath, const std::array<float, 3> &subVals, const std::array<float, 3> &divVals, bool normalize) override;
         
-        [[nodiscard]] const std::vector<TensorSpec> &getTensorSpecs() const noexcept { return mTensorSpecs; }
+        bool infer(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, std::vector<std::vector<std::vector<float>>> &outputs) override;
         
+        [[nodiscard]] const std::vector<TensorSpec> &getTensorSpecs() const noexcept { return mTensorSpecs; }
         [[nodiscard]] const Options &getOptions() const noexcept { return mOptions; }
 
     private:
         [[nodiscard]] std::string generateEnginePath(const std::string &onnxPath) const;
         void clearGpuBuffers();
+
+        [[nodiscard]] cv::cuda::GpuMat blobFromGpuMats(const std::vector<cv::cuda::GpuMat> &batchInput, 
+            const std::array<float, 3> &subVals, const std::array<float, 3> &divVals,
+            bool normalize, bool swapRB = false) const;
         
         Options mOptions;
 
