@@ -13,10 +13,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-if(NOT CMAKE_BUILD_TYPE)
+if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
-endif()
+endif ()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -33,14 +33,14 @@ cpmaddpackage(
 )
 
 find_package(CUDAToolkit REQUIRED)
-find_package(cuDNN REQUIRED)
 find_package(TensorRT 10 REQUIRED COMPONENTS OnnxParser Plugin)
 
-set(OpenCV_DIR "/opt/opencv-cuda/lib/cmake/opencv4")
+if (WIN32)
+    set(OpenCV_DIR "C:/Program Files/opencv-4.11.0")
+else ()
+    set(OpenCV_DIR "/opt/opencv-cuda")
+endif ()
 
-unset(OpenCV_FOUND CACHE)
-unset(OpenCV_INCLUDE_DIRS CACHE)
-unset(OpenCV_LIBS CACHE)
-find_package(OpenCV 4.11.0 REQUIRED)
+find_package(OpenCV REQUIRED)
 
 add_subdirectory(src)

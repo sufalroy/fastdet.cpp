@@ -16,8 +16,7 @@
 #include <opencv2/opencv.hpp>
 
 namespace fastdet::core {
-
-    struct TensorSpec { 
+    struct TensorSpec {
         std::string name;
         nvinfer1::Dims shape;
         nvinfer1::DataType dataType;
@@ -47,35 +46,43 @@ namespace fastdet::core {
     class TensorRTEngine : public IEngine {
     public:
         TensorRTEngine();
+
         ~TensorRTEngine() override;
 
         TensorRTEngine(const TensorRTEngine &) = delete;
+
         TensorRTEngine &operator=(const TensorRTEngine &) = delete;
+
         TensorRTEngine(TensorRTEngine &&other) noexcept;
+
         TensorRTEngine &operator=(TensorRTEngine &&other) noexcept;
 
         bool build(const std::string &onnxPath, const Options &options) override;
-        
-        bool load(const std::string &enginePath, const std::array<float, 3> &subVals, const std::array<float, 3> &divVals, bool normalize) override;
-        
-        bool infer(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, std::vector<std::vector<std::vector<float>>> &outputs) override;
-        
+
+        bool load(const std::string &enginePath, const std::array<float, 3> &subVals,
+                  const std::array<float, 3> &divVals, bool normalize) override;
+
+        bool infer(const std::vector<std::vector<cv::cuda::GpuMat> > &inputs,
+                   std::vector<std::vector<std::vector<float> > > &outputs) override;
+
         [[nodiscard]] const std::vector<TensorSpec> &getTensorSpecs() const noexcept { return mTensorSpecs; }
         [[nodiscard]] const Options &getOptions() const noexcept { return mOptions; }
 
     private:
         [[nodiscard]] std::string generateEnginePath(const std::string &onnxPath) const;
+
         void clearGpuBuffers();
 
-        [[nodiscard]] cv::cuda::GpuMat blobFromGpuMats(const std::vector<cv::cuda::GpuMat> &batchInput, 
-            const std::array<float, 3> &subVals, const std::array<float, 3> &divVals,
-            bool normalize, bool swapRB = false) const;
-        
+        [[nodiscard]] cv::cuda::GpuMat blobFromGpuMats(const std::vector<cv::cuda::GpuMat> &batchInput,
+                                                       const std::array<float, 3> &subVals,
+                                                       const std::array<float, 3> &divVals,
+                                                       bool normalize, bool swapRB = false) const;
+
         Options mOptions;
 
         std::vector<TensorSpec> mTensorSpecs;
         std::vector<void *> mBuffers;
-                
+
         std::array<float, 3> mSubVals{};
         std::array<float, 3> mDivVals{};
         bool mNormalize;

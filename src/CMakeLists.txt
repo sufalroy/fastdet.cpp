@@ -10,7 +10,6 @@ target_include_directories(runtime
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${TensorRT_INCLUDE_DIR}
         ${CUDAToolkit_INCLUDE_DIRS}
-        ${cuDNN_INCLUDE_DIRS}
         ${OpenCV_INCLUDE_DIRS}
 )
 
@@ -24,7 +23,6 @@ target_link_libraries(runtime
         TensorRT::Plugin
         CUDA::cudart
         CUDA::cuda_driver
-        ${cuDNN_LIBRARIES}
         ${OpenCV_LIBS}
 )
 
