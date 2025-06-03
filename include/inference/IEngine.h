@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <opencv2/core/cuda.hpp>
 
-namespace fastdet::core {
+namespace fastdet::inference {
     enum class Precision : uint8_t {
         FP32 = 0,
         FP16 = 1

@@ -1,4 +1,4 @@
-#include "core/TensorRTEngine.h"
+#include "inference/TensorRTEngine.h"
 #include "common/logging.h"
 #include "common/assertion.h"
 
@@ -6,7 +6,7 @@
 #include <fmt/format.h>
 #include <filesystem>
 
-namespace fastdet::core {
+namespace fastdet::inference {
     TensorRTEngine::TensorRTEngine()
         : mRuntime(nullptr), mEngine(nullptr), mContext(nullptr), mOptions{} {
     }

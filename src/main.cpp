@@ -9,7 +9,7 @@
 
 #include "common/logging.h"
 #include "common/assertion.h"
-#include "core/TensorRTEngine.h"
+#include "inference/EngineFactory.h"
 
 auto main(int argc, char *argv[]) -> int {
     try {
@@ -36,14 +36,14 @@ auto main(int argc, char *argv[]) -> int {
                                    : "/home/dev/Laboratory/fastdet.cpp/models/yolo11s.onnx";
         FASTDET_LOG_INFO("Using ONNX model: {}", onnxPath);
 
-        fastdet::core::Options options;
-        options.precision = fastdet::core::Precision::FP16;
+        fastdet::inference::Options options;
+        options.precision = fastdet::inference::Precision::FP16;
         options.optBatchSize = 1;
         options.optInputWidth = 640;
         options.engineDir = "./engines";
 
         FASTDET_LOG_INFO("Creating and building TensorRT engine");
-        std::unique_ptr<fastdet::core::IEngine> const engine = std::make_unique<fastdet::core::TensorRTEngine>();
+        auto const engine = fastdet::inference::EngineFactory::create(fastdet::inference::EngineType::TensorRT);
         if (!engine->build(onnxPath, options)) {
             FASTDET_LOG_ERROR("Failed to build engine");
             return EXIT_FAILURE;

@@ -15,7 +15,7 @@
 #include <opencv2/cudawarping.hpp>
 #include <opencv2/opencv.hpp>
 
-namespace fastdet::core {
+namespace fastdet::inference {
     class TensorRTEngine : public IEngine {
     public:
         TensorRTEngine();
