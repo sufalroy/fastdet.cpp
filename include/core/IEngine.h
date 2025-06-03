@@ -14,9 +14,11 @@ namespace fastdet::core {
 
     struct Options {
         Precision precision = Precision::FP16;
-        int32_t batchSize = 1;
-        int32_t inputWidth = 640;
-        int32_t inputHeight = 640;
+        int32_t optBatchSize = 1;
+        int32_t maxBatchSize = 1;
+        int32_t maxInputWidth = -1;
+        int32_t minInputWidth = -1;
+        int32_t optInputWidth = -1;
         std::string engineDir = "./engines";
     };
 
@@ -29,7 +31,7 @@ namespace fastdet::core {
         virtual bool load(const std::string &enginePath, const std::array<float, 3> &subVals,
                           const std::array<float, 3> &divVals, bool normalize) = 0;
 
-        virtual bool infer(const std::vector<std::vector<cv::cuda::GpuMat> > &inputs,
-                           std::vector<std::vector<std::vector<float> > > &outputs) = 0;
+        virtual bool infer(const std::vector<std::vector<cv::cuda::GpuMat> > &input,
+                           std::vector<std::vector<std::vector<float> > > &output) = 0;
     };
 }

@@ -33,14 +33,13 @@ auto main(int argc, char *argv[]) -> int {
 
         std::string onnxPath = (argc > 1)
                                    ? argv[1]
-                                   : "C:/Laboratory/cpp-workspace/fastdet.cpp/models/YOLOv11-Detection.onnx";
+                                   : "/home/dev/Laboratory/fastdet.cpp/models/yolo11s.onnx";
         FASTDET_LOG_INFO("Using ONNX model: {}", onnxPath);
 
         fastdet::core::Options options;
         options.precision = fastdet::core::Precision::FP16;
-        options.batchSize = 1;
-        options.inputWidth = 640;
-        options.inputHeight = 640;
+        options.optBatchSize = 1;
+        options.optInputWidth = 640;
         options.engineDir = "./engines";
 
         FASTDET_LOG_INFO("Creating and building TensorRT engine");
@@ -51,10 +50,11 @@ auto main(int argc, char *argv[]) -> int {
         }
         FASTDET_LOG_INFO("Engine built successfully");
 
-        const std::string enginePath = "./engines/YOLOv11-Detection_fp16_b1_640x640.engine";
+        const std::string enginePath = "./engines/yolo11s_fp16_b1_w640.engine";
         std::array<float, 3> const subVals{0.F, 0.F, 0.F};
         std::array<float, 3> const divVals{1.F, 1.F, 1.F};
         bool const normalize = true;
+
         FASTDET_LOG_INFO("Loading engine from: {}", enginePath);
         if (!engine->load(enginePath, subVals, divVals, normalize)) {
             FASTDET_LOG_ERROR("Failed to load engine");
@@ -62,7 +62,7 @@ auto main(int argc, char *argv[]) -> int {
         }
         FASTDET_LOG_INFO("Engine loaded successfully");
 
-        const std::string imagePath = "C:/Laboratory/cpp-workspace/fastdet.cpp/inputs/sample.jpg";
+        const std::string imagePath = "/home/dev/Laboratory/fastdet.cpp/inputs/sample.jpg";
         FASTDET_LOG_INFO("Loading image from: {}", imagePath);
         cv::Mat cpuImage = cv::imread(imagePath, cv::IMREAD_COLOR);
         FASTDET_ASSERT_MSG(!cpuImage.empty(), "Failed to load image: {}", imagePath);
@@ -81,24 +81,29 @@ auto main(int argc, char *argv[]) -> int {
         FASTDET_LOG_INFO("Running inference");
         std::vector<std::vector<cv::cuda::GpuMat> > const inputs{{{inputImage}}};
         std::vector<std::vector<std::vector<float> > > outputs;
-        if (!engine->infer(inputs, outputs) || outputs.empty()) {
+        if (!engine->infer(inputs, outputs)) {
             FASTDET_LOG_ERROR("Inference failed or returned empty output");
             return EXIT_FAILURE;
         }
-
-        FASTDET_LOG_INFO("Inference successful! Batches: {}", outputs.size());
-        if (!outputs[0].empty()) {
-            FASTDET_LOG_INFO("Output tensors per batch: {}", outputs[0].size());
-            for (size_t i = 0; i < outputs[0].size(); ++i) {
-                FASTDET_LOG_INFO("Tensor {}: {} elements", i, outputs[0][i].size());
-                if (!outputs[0][i].empty()) {
-                    FASTDET_LOG_INFO("First 5 elements: [{:.6f}, {:.6f}, {:.6f}, {:.6f}, {:.6f}]",
-                                     outputs[0][i].size() > 0 ? outputs[0][i][0] : 0.0f,
-                                     outputs[0][i].size() > 1 ? outputs[0][i][1] : 0.0f,
-                                     outputs[0][i].size() > 2 ? outputs[0][i][2] : 0.0f,
-                                     outputs[0][i].size() > 3 ? outputs[0][i][3] : 0.0f,
-                                     outputs[0][i].size() > 4 ? outputs[0][i][4] : 0.0f);
-                }
+        
+        for (std::size_t batch = 0; batch < outputs.size(); ++batch) {
+            const auto& featureVectors = outputs[batch];
+            
+            for (std::size_t outputNum = 0; outputNum < featureVectors.size(); ++outputNum) {
+                const auto& output = featureVectors[outputNum];
+                FASTDET_LOG_INFO("Batch {}, output {}: [{:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, ...] (size: {})", 
+                    batch, outputNum, 
+                    output.empty() ? 0.0f : output[0],
+                    output.size() > 1 ? output[1] : 0.0f,
+                    output.size() > 2 ? output[2] : 0.0f,
+                    output.size() > 3 ? output[3] : 0.0f,
+                    output.size() > 4 ? output[4] : 0.0f,
+                    output.size() > 5 ? output[5] : 0.0f,
+                    output.size() > 6 ? output[6] : 0.0f,
+                    output.size() > 7 ? output[7] : 0.0f,
+                    output.size() > 8 ? output[8] : 0.0f,
+                    output.size() > 9 ? output[9] : 0.0f,
+                    output.size());
             }
         }
 

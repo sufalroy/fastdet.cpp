@@ -41,6 +41,6 @@ else ()
     set(OpenCV_DIR "/opt/opencv-cuda")
 endif ()
 
-find_package(OpenCV REQUIRED)
+find_package(OpenCV 4.11.0 REQUIRED)
 
 add_subdirectory(src)
