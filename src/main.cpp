@@ -62,7 +62,7 @@ auto main(int argc, char *argv[]) -> int {
             "hair drier", "toothbrush"
         };
 
-        const std::string enginePath = "./engines/yolo11s_fp16_b1_w-1.engine";
+        std::string enginePath = "./engines/yolo11s_fp16_b1_w-1.engine";
 
         FASTDET_LOG_INFO("Creating YOLOv8 detector");
         float probabilityThreshold = 0.5f;
