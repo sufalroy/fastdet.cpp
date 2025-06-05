@@ -1,7 +1,8 @@
 add_executable(runtime main.cpp
-        common/logging.cpp
+        common/Logger.cpp
         inference/TensorRTEngine.cpp
-        inference/EngineFactory.cpp)
+        inference/EngineFactory.cpp
+        detector/YOLOv8.cpp)
 
 target_include_directories(runtime
         PUBLIC

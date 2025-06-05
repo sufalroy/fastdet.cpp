@@ -4,7 +4,7 @@
 #include <string_view>
 #include <utility>
 
-#include "logging.h"
+#include "Logger.h"
 
 #if defined(_MSC_VER)
 #define FASTDET_LIKELY(x) (x)

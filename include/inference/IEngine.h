@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdint>
 #include <opencv2/core/cuda.hpp>
+#include "NvInfer.h"
 
 namespace fastdet::inference {
     enum class Precision : uint8_t {
@@ -33,5 +34,9 @@ namespace fastdet::inference {
 
         virtual bool infer(const std::vector<std::vector<cv::cuda::GpuMat> > &input,
                            std::vector<std::vector<std::vector<float> > > &output) = 0;
+
+        virtual const std::vector<nvinfer1::Dims> &getInputDims() const = 0;
+        
+        virtual const std::vector<nvinfer1::Dims> &getOutputDims() const = 0;
     };
 }

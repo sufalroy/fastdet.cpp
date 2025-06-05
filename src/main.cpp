@@ -1,19 +1,21 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include <NvInfer.h>
 #include <cuda_runtime_api.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/cudaimgproc.hpp>
 #include <opencv2/cudawarping.hpp>
 
-#include "common/logging.h"
-#include "common/assertion.h"
-#include "inference/EngineFactory.h"
+#include "common/Logger.h"
+#include "common/Assert.h"
+#include "detector/YOLOv8.h"
+
 
 auto main(int argc, char *argv[]) -> int {
     try {
-        FASTDET_LOG_INFO("Starting TensorRT sanity check");
+        FASTDET_LOG_INFO("Starting YOLOv8 Object Detection");
         FASTDET_LOG_INFO("TensorRT version: {}.{}.{}", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH);
 
         int deviceCount = 0;
@@ -31,85 +33,86 @@ auto main(int argc, char *argv[]) -> int {
                              properties.multiProcessorCount);
         }
 
-        std::string onnxPath = (argc > 1)
-                                   ? argv[1]
+        std::string onnxPath = (argc > 1) 
+                                   ? argv[1] 
                                    : "/home/dev/Laboratory/fastdet.cpp/models/yolo11s.onnx";
-        FASTDET_LOG_INFO("Using ONNX model: {}", onnxPath);
+        std::string imagePath = (argc > 2) 
+                                    ? argv[2] 
+                                    : "/home/dev/Laboratory/fastdet.cpp/inputs/parking.jpg";
+        std::string outputPath = (argc > 3) 
+                                    ? argv[3] 
+                                    : "/home/dev/Laboratory/fastdet.cpp/outputs/detection_result.jpg";
 
-        fastdet::inference::Options options;
-        options.precision = fastdet::inference::Precision::FP16;
-        options.optBatchSize = 1;
-        options.optInputWidth = 640;
-        options.engineDir = "./engines";
+        FASTDET_LOG_INFO("ONNX model: {}", onnxPath);
+        FASTDET_LOG_INFO("Input image: {}", imagePath);
+        FASTDET_LOG_INFO("Output image: {}", outputPath);
 
-        FASTDET_LOG_INFO("Creating and building TensorRT engine");
-        auto const engine = fastdet::inference::EngineFactory::create(fastdet::inference::EngineType::TensorRT);
-        if (!engine->build(onnxPath, options)) {
-            FASTDET_LOG_ERROR("Failed to build engine");
-            return EXIT_FAILURE;
-        }
-        FASTDET_LOG_INFO("Engine built successfully");
+        std::vector<std::string> labels = {
+            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
+            "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
+            "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
+            "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+            "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
+            "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
+            "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
+            "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+            "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse",
+            "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
+            "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+            "hair drier", "toothbrush"
+        };
 
-        const std::string enginePath = "./engines/yolo11s_fp16_b1_w640.engine";
-        std::array<float, 3> const subVals{0.F, 0.F, 0.F};
-        std::array<float, 3> const divVals{1.F, 1.F, 1.F};
-        bool const normalize = true;
+        const std::string enginePath = "./engines/yolo11s_fp16_b1_w-1.engine";
 
-        FASTDET_LOG_INFO("Loading engine from: {}", enginePath);
-        if (!engine->load(enginePath, subVals, divVals, normalize)) {
-            FASTDET_LOG_ERROR("Failed to load engine");
-            return EXIT_FAILURE;
-        }
-        FASTDET_LOG_INFO("Engine loaded successfully");
-
-        const std::string imagePath = "/home/dev/Laboratory/fastdet.cpp/inputs/sample.jpg";
-        FASTDET_LOG_INFO("Loading image from: {}", imagePath);
-        cv::Mat cpuImage = cv::imread(imagePath, cv::IMREAD_COLOR);
-        FASTDET_ASSERT_MSG(!cpuImage.empty(), "Failed to load image: {}", imagePath);
-        FASTDET_LOG_INFO("Original image size: {}x{}", cpuImage.cols, cpuImage.rows);
-
-        cv::Mat rgbImage;
-        cv::cvtColor(cpuImage, rgbImage, cv::COLOR_BGR2RGB);
-        FASTDET_LOG_INFO("Converted image to RGB");
-
-        cv::cuda::GpuMat gpuImage;
-        cv::cuda::GpuMat inputImage;
-        gpuImage.upload(rgbImage);
-        cv::cuda::resize(gpuImage, inputImage, cv::Size(640, 640));
-        FASTDET_LOG_INFO("Resized image to: {}x{}", inputImage.cols, inputImage.rows);
-
-        FASTDET_LOG_INFO("Running inference");
-        std::vector<std::vector<cv::cuda::GpuMat> > const inputs{{{inputImage}}};
-        std::vector<std::vector<std::vector<float> > > outputs;
-        if (!engine->infer(inputs, outputs)) {
-            FASTDET_LOG_ERROR("Inference failed or returned empty output");
-            return EXIT_FAILURE;
-        }
+        FASTDET_LOG_INFO("Creating YOLOv8 detector");
+        float probabilityThreshold = 0.5f;
+        float nmsThreshold = 0.45f;
         
-        for (std::size_t batch = 0; batch < outputs.size(); ++batch) {
-            const auto& featureVectors = outputs[batch];
-            
-            for (std::size_t outputNum = 0; outputNum < featureVectors.size(); ++outputNum) {
-                const auto& output = featureVectors[outputNum];
-                FASTDET_LOG_INFO("Batch {}, output {}: [{:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, ...] (size: {})", 
-                    batch, outputNum, 
-                    output.empty() ? 0.0f : output[0],
-                    output.size() > 1 ? output[1] : 0.0f,
-                    output.size() > 2 ? output[2] : 0.0f,
-                    output.size() > 3 ? output[3] : 0.0f,
-                    output.size() > 4 ? output[4] : 0.0f,
-                    output.size() > 5 ? output[5] : 0.0f,
-                    output.size() > 6 ? output[6] : 0.0f,
-                    output.size() > 7 ? output[7] : 0.0f,
-                    output.size() > 8 ? output[8] : 0.0f,
-                    output.size() > 9 ? output[9] : 0.0f,
-                    output.size());
-            }
+        auto detector = std::make_unique<fastdet::detector::YOLOv8>(
+            onnxPath,
+            enginePath,
+            labels,
+            probabilityThreshold,
+            nmsThreshold
+        );
+        FASTDET_LOG_INFO("YOLOv8 detector created successfully");
+
+        FASTDET_LOG_INFO("Loading image from: {}", imagePath);
+        cv::Mat image = cv::imread(imagePath);
+        FASTDET_ASSERT_MSG(!image.empty(), "Failed to load image: {}", imagePath);
+        FASTDET_LOG_INFO("Image loaded successfully - Size: {}x{}", image.cols, image.rows);
+
+        FASTDET_LOG_INFO("Running object detection...");
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        std::vector<fastdet::detector::Detection> detections = detector->detect(image);
+                
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        FASTDET_LOG_INFO("Detection completed in {} ms", duration.count());
+
+        detector->draw(image, detections, 1);
+        FASTDET_LOG_INFO("Detections drawn on image");
+
+        bool saved = cv::imwrite(outputPath, image);
+        FASTDET_ASSERT_MSG(saved, "Failed to save result image to: {}", outputPath);
+        FASTDET_LOG_INFO("Result image saved to: {}", outputPath);
+
+        if (getenv("DISPLAY") != nullptr) {
+            FASTDET_LOG_INFO("Displaying result image (press any key to close)");
+            cv::namedWindow("YOLOv8 Detection Results", cv::WINDOW_AUTOSIZE);
+            cv::imshow("YOLOv8 Detection Results", image);
+            cv::waitKey(0);
+            cv::destroyAllWindows();
+        } else {
+            FASTDET_LOG_INFO("No display available - result saved to file only");
         }
 
+        FASTDET_LOG_INFO("Object detection completed successfully");
         return EXIT_SUCCESS;
+
     } catch (const std::exception &e) {
-        FASTDET_LOG_FATAL("Sanity check failed: {}", e.what());
+        FASTDET_LOG_FATAL("Object detection failed: {}", e.what());
         return EXIT_FAILURE;
     }
 }

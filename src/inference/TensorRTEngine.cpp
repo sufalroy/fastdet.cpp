@@ -1,6 +1,6 @@
 #include "inference/TensorRTEngine.h"
-#include "common/logging.h"
-#include "common/assertion.h"
+#include "common/Logger.h"
+#include "common/Assert.h"
 
 #include <fstream>
 #include <fmt/format.h>
@@ -92,49 +92,41 @@ namespace fastdet::inference {
                                                      bool swapRB) const {
         FASTDET_ASSERT_MSG(!batchInput.empty(), "Batch input cannot be empty");
         FASTDET_ASSERT_MSG(batchInput[0].channels() == 3, "Input must have 3 channels");
-
+        
         cv::cuda::GpuMat gpu_dst(1, batchInput[0].rows * batchInput[0].cols * batchInput.size(), CV_8UC3);
-
+        
         size_t width = batchInput[0].cols * batchInput[0].rows;
+        
         if (swapRB) {
             for (size_t img = 0; img < batchInput.size(); ++img) {
                 std::vector<cv::cuda::GpuMat> input_channels{
-                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U,
-                                     &(gpu_dst.ptr()[width * 2 + width * 3 * img])),
-                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U,
-                                     &(gpu_dst.ptr()[width + width * 3 * img])),
-                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U,
-                                     &(gpu_dst.ptr()[0 + width * 3 * img]))
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width * 2 + width * 3 * img])),
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width + width * 3 * img])),
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[0 + width * 3 * img]))
                 };
-
                 cv::cuda::split(batchInput[img], input_channels);
             }
         } else {
             for (size_t img = 0; img < batchInput.size(); ++img) {
                 std::vector<cv::cuda::GpuMat> input_channels{
-                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U,
-                                     &(gpu_dst.ptr()[0 + width * 3 * img])),
-                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U,
-                                     &(gpu_dst.ptr()[width + width * 3 * img])),
-                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U,
-                                     &(gpu_dst.ptr()[width * 2 + width * 3 * img]))
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[0 + width * 3 * img])),
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width + width * 3 * img])),
+                    cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width * 2 + width * 3 * img]))
                 };
-
                 cv::cuda::split(batchInput[img], input_channels);
             }
         }
-
+        
         cv::cuda::GpuMat blob;
-
         if (normalize) {
             gpu_dst.convertTo(blob, CV_32FC3, 1.f / 255.f);
         } else {
             gpu_dst.convertTo(blob, CV_32FC3);
         }
-
+        
         cv::cuda::subtract(blob, cv::Scalar(subVals[0], subVals[1], subVals[2]), blob, cv::noArray(), -1);
         cv::cuda::divide(blob, cv::Scalar(divVals[0], divVals[1], divVals[2]), blob, 1, -1);
-
+        
         return blob;
     }
 

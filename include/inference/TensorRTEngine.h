@@ -38,6 +38,10 @@ namespace fastdet::inference {
         bool infer(const std::vector<std::vector<cv::cuda::GpuMat> > &input, 
             std::vector<std::vector<std::vector<float> > > &output) override;
 
+        [[nodiscard]] const std::vector<nvinfer1::Dims> &getInputDims() const override { return mInputDims; };
+        
+        [[nodiscard]] const std::vector<nvinfer1::Dims> &getOutputDims() const override { return mOutputDims; };
+
     private:
         [[nodiscard]] std::string generateEnginePath(const std::string &onnxPath) const;
 
