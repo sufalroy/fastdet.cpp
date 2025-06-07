@@ -1,10 +1,10 @@
 #pragma once
 
+#include "Logger.h"
+
 #include <source_location>
 #include <string_view>
 #include <utility>
-
-#include "Logger.h"
 
 #if defined(_MSC_VER)
 #define FASTDET_LIKELY(x) (x)

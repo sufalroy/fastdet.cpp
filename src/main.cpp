@@ -1,17 +1,13 @@
+#include "common/Logger.h"
+#include "common/Assert.h"
+#include "detector/YOLOv8.h"
+
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <vector>
 #include <NvInfer.h>
 #include <cuda_runtime_api.h>
 #include <opencv2/opencv.hpp>
-#include <opencv2/cudaimgproc.hpp>
-#include <opencv2/cudawarping.hpp>
-
-#include "common/Logger.h"
-#include "common/Assert.h"
-#include "detector/YOLOv8.h"
-
 
 auto main(int argc, char *argv[]) -> int {
     try {
@@ -33,15 +29,15 @@ auto main(int argc, char *argv[]) -> int {
                              properties.multiProcessorCount);
         }
 
-        std::string onnxPath = (argc > 1) 
-                                   ? argv[1] 
-                                   : "/home/dev/Laboratory/fastdet.cpp/models/yolo11s.onnx";
-        std::string imagePath = (argc > 2) 
-                                    ? argv[2] 
-                                    : "/home/dev/Laboratory/fastdet.cpp/inputs/parking.jpg";
-        std::string outputPath = (argc > 3) 
-                                    ? argv[3] 
-                                    : "/home/dev/Laboratory/fastdet.cpp/outputs/detection_result.jpg";
+        std::string onnxPath = (argc > 1)
+                                   ? argv[1]
+                                   : "C:/Laboratory/cpp-workspace/fastdet.cpp/models/yolo11s.onnx";
+        std::string imagePath = (argc > 2)
+                                    ? argv[2]
+                                    : "C:/Laboratory/cpp-workspace/fastdet.cpp/inputs/parking.jpg";
+        std::string outputPath = (argc > 3)
+                                     ? argv[3]
+                                     : "C:/Laboratory/cpp-workspace/fastdet.cpp/outputs/detection.jpg";
 
         FASTDET_LOG_INFO("ONNX model: {}", onnxPath);
         FASTDET_LOG_INFO("Input image: {}", imagePath);
@@ -67,7 +63,7 @@ auto main(int argc, char *argv[]) -> int {
         FASTDET_LOG_INFO("Creating YOLOv8 detector");
         float probabilityThreshold = 0.5f;
         float nmsThreshold = 0.45f;
-        
+
         auto detector = std::make_unique<fastdet::detector::YOLOv8>(
             onnxPath,
             enginePath,
@@ -84,9 +80,9 @@ auto main(int argc, char *argv[]) -> int {
 
         FASTDET_LOG_INFO("Running object detection...");
         auto start = std::chrono::high_resolution_clock::now();
-        
+
         std::vector<fastdet::detector::Detection> detections = detector->detect(image);
-                
+
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         FASTDET_LOG_INFO("Detection completed in {} ms", duration.count());
@@ -110,7 +106,6 @@ auto main(int argc, char *argv[]) -> int {
 
         FASTDET_LOG_INFO("Object detection completed successfully");
         return EXIT_SUCCESS;
-
     } catch (const std::exception &e) {
         FASTDET_LOG_FATAL("Object detection failed: {}", e.what());
         return EXIT_FAILURE;

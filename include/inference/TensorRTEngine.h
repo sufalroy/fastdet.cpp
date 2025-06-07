@@ -33,13 +33,13 @@ namespace fastdet::inference {
         bool build(const std::string &onnxPath, const Options &options) override;
 
         bool load(const std::string &enginePath, const std::array<float, 3> &subVals,
-            const std::array<float, 3> &divVals, bool normalize) override;
+                  const std::array<float, 3> &divVals, bool normalize) override;
 
-        bool infer(const std::vector<std::vector<cv::cuda::GpuMat> > &input, 
-            std::vector<std::vector<std::vector<float> > > &output) override;
+        bool infer(const std::vector<std::vector<cv::cuda::GpuMat> > &input,
+                   std::vector<std::vector<std::vector<float> > > &output) override;
 
         [[nodiscard]] const std::vector<nvinfer1::Dims> &getInputDims() const override { return mInputDims; };
-        
+
         [[nodiscard]] const std::vector<nvinfer1::Dims> &getOutputDims() const override { return mOutputDims; };
 
     private:
