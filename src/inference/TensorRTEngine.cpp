@@ -142,7 +142,8 @@ namespace fastdet::inference {
         auto builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(gLogger));
         FASTDET_ASSERT_MSG(builder != nullptr, "Failed to create TensorRT builder");
 
-        auto network = std::unique_ptr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(0U));
+        auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+        auto network = std::unique_ptr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
         FASTDET_ASSERT_MSG(network != nullptr, "Failed to create network definition");
 
         auto parser = std::unique_ptr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, gLogger));

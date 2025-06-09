@@ -31,13 +31,13 @@ auto main(int argc, char *argv[]) -> int {
 
         std::string onnxPath = (argc > 1)
                                    ? argv[1]
-                                   : "C:/Laboratory/cpp-workspace/fastdet.cpp/models/yolo11s.onnx";
+                                   : "/home/dev/Laboratory/fastdet.cpp/models/yolo11s.onnx";
         std::string imagePath = (argc > 2)
                                     ? argv[2]
-                                    : "C:/Laboratory/cpp-workspace/fastdet.cpp/inputs/parking.jpg";
+                                    : "/home/dev/Laboratory/fastdet.cpp/inputs/parking.jpg";
         std::string outputPath = (argc > 3)
                                      ? argv[3]
-                                     : "C:/Laboratory/cpp-workspace/fastdet.cpp/outputs/detection.jpg";
+                                     : "/home/dev/Laboratory/fastdet.cpp/outputs/detection.jpg";
 
         FASTDET_LOG_INFO("ONNX model: {}", onnxPath);
         FASTDET_LOG_INFO("Input image: {}", imagePath);
